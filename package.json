@@ -1,0 +1,52 @@
+{
+  "name": "hometogether-weekly-checkin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:unit": "vitest run lib tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "test:e2e:production": "PRODUCTION_E2E=1 playwright test e2e/production-weekly-checkin.spec.ts --project=production-mobile-chromium",
+    "test:e2e:production:persistence": "PRODUCTION_E2E=1 PRODUCTION_PERSISTENCE_E2E=1 playwright test e2e/production-persistence.spec.ts --project=production-mobile-chromium",
+    "prod:test:preflight": "tsx scripts/production-validation/cli.ts preflight",
+    "prod:test:seed": "tsx scripts/production-validation/cli.ts seed",
+    "prod:test:verify-db": "tsx scripts/production-validation/cli.ts verify-db",
+    "prod:test:state": "tsx scripts/production-validation/cli.ts state",
+    "prod:test:cleanup": "tsx scripts/production-validation/cli.ts cleanup"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.111.0",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.28.0",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,11 @@
+.env*
+.vercel
+.next
+node_modules
+coverage
+test-results
+playwright-report
+e2e
+tests
+/supabase/
+*.tsbuildinfo
