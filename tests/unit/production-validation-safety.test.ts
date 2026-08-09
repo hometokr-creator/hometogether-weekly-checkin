@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  ANONYMOUS_RLS_TARGETS,
   assertRedValidationIsSafe,
   getProductionConfiguration,
   PRODUCTION_RED_ACK,
@@ -47,5 +48,17 @@ describe("production validation safety rails", () => {
       "server-key-for-tests-only-do-not-use public-key-for-tests-only",
     );
     expect(redacted).toBe("[REDACTED_SUPABASE_SERVER_KEY] [REDACTED_SUPABASE_PUBLIC_KEY]");
+  });
+
+  it("queries legacy tables by their real primary-key columns", () => {
+    expect(ANONYMOUS_RLS_TARGETS).toContainEqual({
+      table: "app_members",
+      column: "user_id",
+      requireGrantDenied: false,
+    });
+    expect(ANONYMOUS_RLS_TARGETS.find((target) => target.table === "app_files")).toMatchObject({
+      column: "id",
+      requireGrantDenied: true,
+    });
   });
 });

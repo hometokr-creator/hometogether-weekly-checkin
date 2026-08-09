@@ -85,6 +85,18 @@ const TEST_TABLES = [
   "support_cases",
 ] as const;
 
+export const ANONYMOUS_RLS_TARGETS = [
+  { table: "app_files", column: "id", requireGrantDenied: true },
+  { table: "app_members", column: "user_id", requireGrantDenied: false },
+  { table: "app_records", column: "id", requireGrantDenied: false },
+  { table: "weekly_checkin_invitations", column: "id", requireGrantDenied: false },
+  { table: "weekly_checkin_responses", column: "id", requireGrantDenied: false },
+  { table: "weekly_checkin_issues", column: "id", requireGrantDenied: false },
+  { table: "support_cases", column: "id", requireGrantDenied: false },
+  { table: "message_logs", column: "id", requireGrantDenied: false },
+  { table: "audit_logs", column: "id", requireGrantDenied: false },
+] as const;
+
 function required(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`필수 환경변수가 없습니다: ${name}`);
@@ -586,18 +598,8 @@ export async function verifyAnonymousRls(): Promise<number> {
   const config = getProductionConfiguration();
   const client = anonymousClient(config);
   let visibleRows = 0;
-  for (const { table, requireGrantDenied = false } of [
-    { table: "app_files", requireGrantDenied: true },
-    { table: "app_members" },
-    { table: "app_records" },
-    { table: "weekly_checkin_invitations" },
-    { table: "weekly_checkin_responses" },
-    { table: "weekly_checkin_issues" },
-    { table: "support_cases" },
-    { table: "message_logs" },
-    { table: "audit_logs" },
-  ]) {
-    const { data, error } = await client.from(table).select("id").limit(5);
+  for (const { table, column, requireGrantDenied } of ANONYMOUS_RLS_TARGETS) {
+    const { data, error } = await client.from(table).select(column).limit(5);
     // A table-level 42501 is an even stricter boundary than an empty RLS
     // result: anon has no SELECT grant at all. Treat that as zero visible rows.
     if (error?.code === "42501") continue;

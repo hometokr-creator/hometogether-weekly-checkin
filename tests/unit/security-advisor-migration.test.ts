@@ -93,7 +93,7 @@ describe("legacy app files RLS hardening migration", () => {
 
   it("requires an anonymous table-level denial even while app_files is empty", () => {
     expect(productionValidation).toContain(
-      '{ table: "app_files", requireGrantDenied: true }',
+      '{ table: "app_files", column: "id", requireGrantDenied: true }',
     );
     expect(productionValidation).toContain(
       "anonymous SELECT grant가 회수되지 않았습니다",
