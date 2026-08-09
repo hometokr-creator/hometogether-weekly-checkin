@@ -586,19 +586,25 @@ export async function verifyAnonymousRls(): Promise<number> {
   const config = getProductionConfiguration();
   const client = anonymousClient(config);
   let visibleRows = 0;
-  for (const table of [
-    "weekly_checkin_invitations",
-    "weekly_checkin_responses",
-    "weekly_checkin_issues",
-    "support_cases",
-    "message_logs",
-    "audit_logs",
+  for (const { table, requireGrantDenied = false } of [
+    { table: "app_files", requireGrantDenied: true },
+    { table: "app_members" },
+    { table: "app_records" },
+    { table: "weekly_checkin_invitations" },
+    { table: "weekly_checkin_responses" },
+    { table: "weekly_checkin_issues" },
+    { table: "support_cases" },
+    { table: "message_logs" },
+    { table: "audit_logs" },
   ]) {
     const { data, error } = await client.from(table).select("id").limit(5);
     // A table-level 42501 is an even stricter boundary than an empty RLS
     // result: anon has no SELECT grant at all. Treat that as zero visible rows.
     if (error?.code === "42501") continue;
     if (error) databaseFailure(`${table} anonymous RLS 확인`, error);
+    if (requireGrantDenied) {
+      throw new Error(`${table} anonymous SELECT grant가 회수되지 않았습니다.`);
+    }
     visibleRows += data?.length ?? 0;
   }
   if (visibleRows !== 0) throw new Error("anonymous 역할에서 비공개 원본 행이 조회됩니다.");

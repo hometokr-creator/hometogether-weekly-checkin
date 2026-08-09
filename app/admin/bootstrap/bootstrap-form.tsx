@@ -11,7 +11,6 @@ type BootstrapResponse = {
 
 export function AdminBootstrapForm() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [bootstrapSecret, setBootstrapSecret] = useState("");
   const [message, setMessage] = useState<string>();
   const [completed, setCompleted] = useState(false);
@@ -26,7 +25,7 @@ export function AdminBootstrapForm() {
       const response = await fetch("/api/admin/bootstrap", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, bootstrapSecret }),
+        body: JSON.stringify({ email, bootstrapSecret }),
       });
       const payload = (await response.json()) as BootstrapResponse;
       if (!response.ok) {
@@ -39,7 +38,6 @@ export function AdminBootstrapForm() {
       }
 
       setCompleted(true);
-      setPassword("");
       setBootstrapSecret("");
       setMessage(payload.message ?? "최초 관리자 등록을 완료했습니다.");
     } catch (error) {
@@ -61,8 +59,7 @@ export function AdminBootstrapForm() {
         </p>
         <h1 className="m-0 text-3xl font-bold tracking-[-0.03em]">최초 관리자 등록</h1>
         <p className="mt-3 text-base leading-7 text-[#5b6b64]">
-          운영 환경의 <code>ADMIN_EMAIL</code>과 일치하는 계정 한 명만 등록합니다. 활성 관리자
-          한 명이 생성되면 이 기능은 데이터베이스 상태를 확인해 자동으로 비활성화됩니다.
+          운영 환경의 <code>ADMIN_EMAILS</code> 허용 목록과 일치하고 이메일 인증을 완료한 기존 Supabase Auth 계정 한 명만 등록합니다. 계정이나 비밀번호는 이 화면에서 만들거나 변경하지 않습니다.
         </p>
 
         {completed ? (
@@ -90,19 +87,6 @@ export function AdminBootstrapForm() {
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 min-h-12 w-full rounded-xl border border-[#b9c7c0] px-4 outline-none focus:border-[#39745d] focus:ring-4 focus:ring-[#39745d]/15"
               />
-            </label>
-            <label className="font-semibold">
-              사용할 비밀번호
-              <input
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 min-h-12 w-full rounded-xl border border-[#b9c7c0] px-4 outline-none focus:border-[#39745d] focus:ring-4 focus:ring-[#39745d]/15"
-              />
-              <small className="mt-1 block font-normal text-[#6a766f]">12자 이상으로 설정해 주세요.</small>
             </label>
             <label className="font-semibold">
               일회성 등록 암호

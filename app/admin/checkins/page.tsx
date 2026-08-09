@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Clock3,
+  Download,
   Filter,
   LockKeyhole,
   RotateCcw,
@@ -105,6 +106,8 @@ export default async function AdminCheckinsPage({
     desiredAction: firstValue(rawParams.desiredAction),
     caseStatus: firstValue(rawParams.caseStatus),
     assignee: firstValue(rawParams.assignee).trim(),
+    from: firstValue(rawParams.from),
+    to: firstValue(rawParams.to),
     includeTest: ["true", "only"].includes(firstValue(rawParams.includeTest))
       ? firstValue(rawParams.includeTest)
       : "",
@@ -170,6 +173,11 @@ export default async function AdminCheckinsPage({
           ?.toLowerCase()
           .includes(filters.assignee.toLowerCase()),
     )
+    .filter(
+      (response) =>
+        (!filters.from || response.submittedAt.slice(0, 10) >= filters.from) &&
+        (!filters.to || response.submittedAt.slice(0, 10) <= filters.to),
+    )
     .sort(
       (a, b) =>
         urgentScore(b) - urgentScore(a) ||
@@ -192,12 +200,22 @@ export default async function AdminCheckinsPage({
       title="주간 체크인 대시보드"
       description="제출된 응답과 위험 신호를 확인합니다. RED 미확인 응답은 어떤 필터에서도 목록 최상단에 우선 배치됩니다."
       actions={
-        <Link
-          href="/admin/support-cases"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#176b52] px-4 text-sm font-extrabold text-white no-underline outline-none hover:bg-[#0d523e] focus-visible:ring-4 focus-visible:ring-[#176b52]/20"
-        >
-          지원 사건 보기 <ArrowRight size={17} aria-hidden="true" />
-        </Link>
+        <>
+          {canReadSafety ? (
+            <a
+              href={`/api/admin/exports/checkin-responses${returnParams.size ? `?${returnParams}` : ""}`}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#9bbcaf] bg-white px-4 text-sm font-extrabold text-[#0d523e] no-underline outline-none hover:bg-[#e7f3ed] focus-visible:ring-4 focus-visible:ring-[#176b52]/20"
+            >
+              <Download size={17} aria-hidden="true" /> 현재 필터 CSV
+            </a>
+          ) : null}
+          <Link
+            href="/admin/support-cases"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#176b52] px-4 text-sm font-extrabold text-white no-underline outline-none hover:bg-[#0d523e] focus-visible:ring-4 focus-visible:ring-[#176b52]/20"
+          >
+            지원 사건 보기 <ArrowRight size={17} aria-hidden="true" />
+          </Link>
+        </>
       }
     >
       {canReadSafety && dashboard.stats.unacknowledgedCritical > 0 ? (
@@ -421,6 +439,14 @@ export default async function AdminCheckinsPage({
                 <option value="true">운영 + 테스트 포함</option>
                 <option value="only">테스트만</option>
               </select>
+            </label>
+            <label className="text-sm font-bold text-[#34443d]">
+              제출 시작일
+              <input type="date" name="from" defaultValue={filters.from} className={`mt-2 ${selectClassName()}`} />
+            </label>
+            <label className="text-sm font-bold text-[#34443d]">
+              제출 종료일
+              <input type="date" name="to" min={filters.from || undefined} defaultValue={filters.to} className={`mt-2 ${selectClassName()}`} />
             </label>
             <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
               <button type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#176b52] px-5 text-sm font-extrabold text-white outline-none hover:bg-[#0d523e] focus-visible:ring-4 focus-visible:ring-[#176b52]/20">

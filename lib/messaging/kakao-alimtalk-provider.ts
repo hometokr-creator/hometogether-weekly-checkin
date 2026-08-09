@@ -1,17 +1,48 @@
 import {
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
+
+import {
+  classifyHttpFailure,
   renderWeeklyCheckinMessage,
   sanitizeProviderError,
+  validateWeeklyCheckinMessageInput,
+  type MessagingCallbackInput,
+  type MessagingCallbackResult,
   type MessagingProvider,
   type MessagingResult,
+  type MessagingStatusInput,
+  type MessagingStatusResult,
   type WeeklyCheckinMessageInput,
 } from "@/lib/messaging/provider";
 
 export interface KakaoAlimtalkConfig {
   baseUrl: string;
   apiKey: string;
-  senderKey: string;
+  apiSecret: string;
+  senderProfile: string;
   templateCode: string;
+  callbackSecret?: string;
   timeoutMs?: number;
+}
+
+function retryAfterSeconds(response: Response): number | undefined {
+  const value = response.headers.get("retry-after");
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds;
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.max(1, Math.ceil((date - Date.now()) / 1000));
+}
+
+function safeBodyStatus(value: unknown): MessagingStatusResult["status"] {
+  const status = String(value ?? "").toUpperCase();
+  if (["DELIVERED", "SENT", "SUCCESS"].includes(status)) return "DELIVERED";
+  if (["FAILED", "REJECTED", "CANCELLED"].includes(status)) return "FAILED";
+  if (["PENDING", "ACCEPTED", "PROCESSING", "QUEUED"].includes(status)) return "PENDING";
+  return "UNKNOWN";
 }
 
 /**
@@ -22,6 +53,15 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
   constructor(private readonly config: KakaoAlimtalkConfig) {}
 
   async sendWeeklyCheckin(input: WeeklyCheckinMessageInput): Promise<MessagingResult> {
+    const validated = validateWeeklyCheckinMessageInput(input);
+    if (!validated.success) {
+      return {
+        success: false,
+        errorCode: validated.error,
+        errorMessage: "알림톡 수신자 또는 템플릿 변수가 올바르지 않습니다.",
+        failureClass: "PERMANENT",
+      };
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 8_000);
 
@@ -31,19 +71,14 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${this.config.apiKey}`,
+          "x-api-secret": this.config.apiSecret,
           "idempotency-key": input.idempotencyKey,
         },
         body: JSON.stringify({
-          senderKey: this.config.senderKey,
-          templateCode: this.config.templateCode,
-          recipient: input.phone,
-          variables: {
-            name: input.name,
-            counterpartLabel: input.counterpartLabel,
-            period: input.period,
-            deadline: input.deadline,
-            checkinUrl: input.checkinUrl,
-          },
+          senderProfile: this.config.senderProfile,
+          templateCode: input.templateCode ?? this.config.templateCode,
+          recipient: validated.phone,
+          variables: validated.variables,
           content: renderWeeklyCheckinMessage(input),
           buttons: [
             {
@@ -63,12 +98,15 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
           success: false,
           errorCode: String(body.code ?? `HTTP_${response.status}`),
           errorMessage: sanitizeProviderError(body.message ?? response.statusText),
+          failureClass: classifyHttpFailure(response.status),
+          retryAfterSeconds: retryAfterSeconds(response),
         };
       }
 
       return {
         success: true,
-        providerMessageId: String(body.messageId ?? body.id ?? input.idempotencyKey),
+        providerMessageId:
+          body.messageId || body.id ? String(body.messageId ?? body.id) : undefined,
       };
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "AbortError";
@@ -76,9 +114,87 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
         success: false,
         errorCode: timedOut ? "KAKAO_TIMEOUT_UNKNOWN" : "KAKAO_NETWORK_ERROR",
         errorMessage: sanitizeProviderError(error),
+        failureClass: timedOut ? "UNKNOWN" : "TRANSIENT",
       };
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  async getStatus(input: MessagingStatusInput): Promise<MessagingStatusResult> {
+    const reference = input.providerMessageId ?? input.idempotencyKey;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 8_000);
+    try {
+      const response = await fetch(
+        `${this.config.baseUrl.replace(/\/$/, "")}/messages/alimtalk/${encodeURIComponent(reference)}`,
+        {
+          headers: {
+            authorization: `Bearer ${this.config.apiKey}`,
+            "x-api-secret": this.config.apiSecret,
+          },
+          signal: controller.signal,
+        },
+      );
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!response.ok) {
+        return {
+          success: false,
+          status: "UNKNOWN",
+          errorCode: String(body.code ?? `HTTP_${response.status}`),
+          errorMessage: sanitizeProviderError(body.message ?? response.statusText),
+          failureClass: classifyHttpFailure(response.status),
+          retryAfterSeconds: retryAfterSeconds(response),
+        };
+      }
+      const status = safeBodyStatus(body.status);
+      return {
+        success: status === "DELIVERED",
+        status,
+        providerMessageId:
+          body.messageId || body.id ? String(body.messageId ?? body.id) : input.providerMessageId,
+        failureClass: status === "FAILED" ? "PERMANENT" : undefined,
+      };
+    } catch (error) {
+      const timedOut = error instanceof Error && error.name === "AbortError";
+      return {
+        success: false,
+        status: "UNKNOWN",
+        errorCode: timedOut ? "KAKAO_STATUS_TIMEOUT" : "KAKAO_STATUS_NETWORK_ERROR",
+        errorMessage: sanitizeProviderError(error),
+        failureClass: timedOut ? "UNKNOWN" : "TRANSIENT",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async verifyCallback(input: MessagingCallbackInput): Promise<MessagingCallbackResult> {
+    if (!this.config.callbackSecret) {
+      return { valid: false, errorCode: "CALLBACK_SECRET_MISSING" };
+    }
+    const supplied = input.headers.get("x-alimtalk-signature") ?? "";
+    const expected = `sha256=${createHmac("sha256", this.config.callbackSecret)
+      .update(input.rawBody)
+      .digest("hex")}`;
+    const suppliedBuffer = Buffer.from(supplied);
+    const expectedBuffer = Buffer.from(expected);
+    if (
+      suppliedBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(suppliedBuffer, expectedBuffer)
+    ) {
+      return { valid: false, errorCode: "INVALID_CALLBACK_SIGNATURE" };
+    }
+    try {
+      const body = JSON.parse(input.rawBody) as Record<string, unknown>;
+      return {
+        valid: true,
+        providerMessageId:
+          body.messageId || body.id ? String(body.messageId ?? body.id) : undefined,
+        status: safeBodyStatus(body.status),
+      };
+    } catch {
+      return { valid: false, errorCode: "INVALID_CALLBACK_BODY" };
     }
   }
 }

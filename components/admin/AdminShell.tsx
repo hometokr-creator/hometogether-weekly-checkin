@@ -1,11 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ClipboardCheck, HeartHandshake, Home } from "lucide-react";
+import {
+  Activity,
+  ClipboardCheck,
+  Database,
+  HeartHandshake,
+  Home,
+  Users,
+} from "lucide-react";
 
 import { AdminLogoutButton } from "@/components/admin/AdminLogoutButton";
 
 type AdminShellProps = {
-  active: "checkins" | "cases";
+  active: "checkins" | "cases" | "system" | "admins" | "data";
   eyebrow: string;
   title: string;
   description: string;
@@ -51,6 +58,18 @@ export function AdminShell({
             <Link className={navClass(active === "cases")} href="/admin/support-cases">
               <HeartHandshake size={17} aria-hidden="true" />
               지원 사건
+            </Link>
+            <Link className={navClass(active === "data")} href="/admin/data">
+              <Database size={17} aria-hidden="true" />
+              데이터
+            </Link>
+            <Link className={navClass(active === "system")} href="/admin/system">
+              <Activity size={17} aria-hidden="true" />
+              시스템
+            </Link>
+            <Link className={navClass(active === "admins")} href="/admin/admins">
+              <Users size={17} aria-hidden="true" />
+              관리자
             </Link>
             <Link className={navClass(false)} href="/">
               <Home size={17} aria-hidden="true" />

@@ -10,13 +10,13 @@ import {
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getConfiguredAdminEmails } from "@/lib/auth/admin-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const bootstrapSchema = z.object({
   email: z.string().trim().email().max(254),
-  password: z.string().min(12).max(128),
   bootstrapSecret: z.string().min(16).max(512),
 });
 
@@ -74,9 +74,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const configuredEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  let configuredEmails: string[];
+  try {
+    configuredEmails = getConfiguredAdminEmails();
+  } catch {
+    configuredEmails = [];
+  }
   const configuredSecret = process.env.ADMIN_BOOTSTRAP_SECRET;
-  if (!configuredEmail || !configuredSecret || configuredSecret.length < 16) {
+  if (!configuredEmails.length || !configuredSecret || configuredSecret.length < 16) {
     return publicErrorResponse(
       context,
       "BOOTSTRAP_NOT_CONFIGURED",
@@ -102,14 +107,14 @@ export async function POST(request: Request) {
     return publicErrorResponse(
       context,
       "INVALID_BODY",
-      "이메일, 12자 이상의 비밀번호와 등록 암호를 확인해 주세요.",
+      "이메일과 등록 암호를 확인해 주세요.",
       400,
     );
   }
 
   const email = parsed.data.email.toLowerCase();
   if (
-    email !== configuredEmail ||
+    !configuredEmails.includes(email) ||
     !constantTimeEqual(parsed.data.bootstrapSecret, configuredSecret)
   ) {
     return publicErrorResponse(
@@ -139,31 +144,29 @@ export async function POST(request: Request) {
       );
     }
 
-    let user = await findAuthUserByEmail(supabase, configuredEmail);
-    if (user) {
-      const { data, error } = await supabase.auth.admin.updateUserById(user.id, {
-        password: parsed.data.password,
-        email_confirm: true,
-      });
-      if (error) throw error;
-      user = data.user;
-    } else {
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: configuredEmail,
-        password: parsed.data.password,
-        email_confirm: true,
-      });
-      if (error) throw error;
-      user = data.user;
+    const user = await findAuthUserByEmail(supabase, email);
+    if (!user) {
+      return publicErrorResponse(
+        context,
+        "AUTH_USER_NOT_FOUND",
+        "Supabase Auth에 이미 가입한 계정만 등록할 수 있습니다.",
+        404,
+      );
     }
-
-    if (!user) throw new Error("ADMIN_AUTH_USER_NOT_CREATED");
+    if (!user.email_confirmed_at) {
+      return publicErrorResponse(
+        context,
+        "AUTH_USER_NOT_VERIFIED",
+        "이메일 인증을 완료한 계정만 등록할 수 있습니다.",
+        409,
+      );
+    }
 
     const { error: membershipError } = await supabase.rpc(
       "bootstrap_first_admin",
       {
         p_user_id: user.id,
-        p_expected_email: configuredEmail,
+        p_expected_email: email,
       },
     );
     if (membershipError) throw membershipError;

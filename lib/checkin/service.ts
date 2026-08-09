@@ -24,6 +24,15 @@ export class CheckinServiceError extends Error {
   }
 }
 
+function logSanitizedServiceError(event: string, error: unknown): void {
+  console.error(
+    JSON.stringify({
+      event,
+      errorKind: error instanceof Error ? "Error" : "NonError",
+    }),
+  );
+}
+
 function requireToken(token: string) {
   if (!isUsableTokenFormat(token)) {
     throw new CheckinServiceError(
@@ -59,6 +68,20 @@ export async function getPublicCheckin(token: string): Promise<PublicInvitation>
   }
   assertInvitationUsable(invitation);
   return invitation;
+}
+
+/** Validates ownership and expiry without mutating the invitation state. */
+export async function assertPublicCheckinToken(token: string): Promise<void> {
+  const repository = await getCheckinRepository();
+  const invitation = await repository.findInvitation(requireToken(token), false);
+  if (!invitation) {
+    throw new CheckinServiceError(
+      "NOT_FOUND",
+      404,
+      "체크인 링크를 찾을 수 없습니다. 메시지의 링크를 다시 확인해 주세요.",
+    );
+  }
+  assertInvitationUsable(invitation);
 }
 
 export async function saveCheckinDraft(token: string, answers: Record<string, unknown>) {
@@ -116,7 +139,7 @@ export async function submitCheckin(token: string, rawSubmission: unknown) {
       await dispatchIntegrationOutbox().catch((webhookError) => {
         // The transactional outbox remains retryable; never fail or duplicate
         // the participant's already committed response because a webhook is down.
-        console.error("[weekly-checkin] webhook delivery deferred", webhookError);
+        logSanitizedServiceError("weekly-checkin.webhook-delivery-deferred", webhookError);
       });
     }
     return {
@@ -141,7 +164,7 @@ export function serializeServiceError(error: unknown) {
       body: { error: error.code, message: error.userMessage },
     };
   }
-  console.error("[weekly-checkin] unexpected service error", error);
+  logSanitizedServiceError("weekly-checkin.unexpected-service-error", error);
   return {
     status: 500,
     body: { error: "INTERNAL_ERROR", message: "잠시 후 다시 시도해 주세요." },

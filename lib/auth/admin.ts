@@ -6,6 +6,14 @@ import {
   createClient,
   isSupabaseServerConfigured,
 } from "@/lib/supabase/server";
+import {
+  AdminEmailConfigurationError,
+  isConfiguredAdminEmail,
+} from "@/lib/auth/admin-config";
+import {
+  createAdminClient,
+  isSupabaseAdminConfigured,
+} from "@/lib/supabase/admin";
 
 export const ADMIN_PERMISSIONS = [
   "CHECKIN_READ",
@@ -15,6 +23,7 @@ export const ADMIN_PERMISSIONS = [
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 export type AdminMembershipPermission = AdminPermission | "SUPER_ADMIN";
+export type AdminRequiredPermission = AdminMembershipPermission;
 
 export type AdminContext = {
   userId: string | null;
@@ -84,8 +93,38 @@ function normalizePermissions(value: unknown): AdminMembershipPermission[] {
   );
 }
 
+type MembershipRow = {
+  user_id: string;
+  permissions: unknown;
+  is_active: boolean;
+};
+
+async function provisionConfiguredMembership(user: {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+}): Promise<MembershipRow | null> {
+  if (!user.email_confirmed_at || !isConfiguredAdminEmail(user.email)) {
+    return null;
+  }
+  if (!isSupabaseAdminConfigured()) {
+    throw new AdminEmailConfigurationError();
+  }
+
+  const { data, error } = await createAdminClient().rpc(
+    "provision_configured_admin",
+    {
+      p_user_id: user.id,
+      p_expected_email: user.email!.trim().toLowerCase(),
+      p_grant_source: "ENV_ALLOWLIST",
+    },
+  );
+  if (error) throw error;
+  return data as MembershipRow | null;
+}
+
 async function resolveAdmin(
-  requiredPermission: AdminPermission,
+  requiredPermission: AdminRequiredPermission,
 ): Promise<AdminResolution> {
   if (isDevelopmentAdminBypassEnabled()) {
     return {
@@ -113,33 +152,52 @@ async function resolveAdmin(
     return { context: null, failure: "UNAUTHENTICATED" };
   }
 
-  // This SECURITY DEFINER function reads the authoritative DB membership and
-  // is executable only by authenticated users. Never infer admin access from
-  // client-controlled user_metadata.
+  const membershipResult = await supabase
+    .from("admin_memberships")
+    .select("user_id, permissions, is_active")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  let membership = membershipResult.data;
+  const membershipError = membershipResult.error;
+
+  if (membershipError) {
+    return { context: null, failure: "FORBIDDEN" };
+  }
+
+  if (!membership) {
+    try {
+      membership = await provisionConfiguredMembership(user);
+    } catch (error) {
+      return {
+        context: null,
+        failure:
+          error instanceof AdminEmailConfigurationError
+            ? "MISCONFIGURED"
+            : "FORBIDDEN",
+      };
+    }
+  }
+
+  const permissions = normalizePermissions(membership?.permissions);
+
+  if (
+    !membership ||
+    membership.is_active !== true ||
+    (!permissions.includes("SUPER_ADMIN") &&
+      !permissions.includes(requiredPermission))
+  ) {
+    return { context: null, failure: "FORBIDDEN" };
+  }
+
+  // This SECURITY DEFINER function is the authoritative DB permission check.
+  // The local check above prevents an unnecessary RPC for inactive accounts;
+  // neither client metadata nor ADMIN_EMAILS alone grants request access.
   const { data: isAllowed, error: permissionError } = await supabase.rpc(
     "is_admin",
     { required_permission: requiredPermission },
   );
 
   if (permissionError || isAllowed !== true) {
-    return { context: null, failure: "FORBIDDEN" };
-  }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from("admin_memberships")
-    .select("user_id, permissions, is_active")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const permissions = normalizePermissions(membership?.permissions);
-
-  if (
-    membershipError ||
-    !membership ||
-    membership.is_active !== true ||
-    (!permissions.includes("SUPER_ADMIN") &&
-      !permissions.includes(requiredPermission))
-  ) {
     return { context: null, failure: "FORBIDDEN" };
   }
 
@@ -155,7 +213,7 @@ async function resolveAdmin(
 }
 
 export async function getAdminContext(
-  requiredPermission: AdminPermission = "CHECKIN_READ",
+  requiredPermission: AdminRequiredPermission = "CHECKIN_READ",
 ): Promise<AdminContext | null> {
   const result = await resolveAdmin(requiredPermission);
   return result.context;
@@ -165,7 +223,7 @@ export async function getAdminContext(
  * API/data-layer guard. Route Handlers can map the thrown status to 401/403.
  */
 export async function requireAdmin(
-  requiredPermission: AdminPermission = "CHECKIN_READ",
+  requiredPermission: AdminRequiredPermission = "CHECKIN_READ",
 ): Promise<AdminContext> {
   const result = await resolveAdmin(requiredPermission);
 
@@ -190,7 +248,7 @@ function safeAdminPath(path: string): string {
 
 /** Page guard that preserves a safe, same-origin admin return path. */
 export async function requireAdminPage(
-  requiredPermission: AdminPermission = "CHECKIN_READ",
+  requiredPermission: AdminRequiredPermission = "CHECKIN_READ",
   nextPath = "/admin/checkins",
 ): Promise<AdminContext> {
   const result = await resolveAdmin(requiredPermission);

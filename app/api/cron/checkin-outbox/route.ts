@@ -9,6 +9,8 @@ import {
   recordCronFailureSafely,
 } from "@/lib/auth/cron-execution";
 import { isAuthorizedCronRequest } from "@/lib/jobs/cron-auth";
+import { dispatchMessageOutbox } from "@/lib/jobs/dispatch-message-outbox";
+import { runOperationalHousekeeping } from "@/lib/jobs/operational-housekeeping";
 import { dispatchIntegrationOutbox } from "@/lib/webhooks/dispatch-outbox";
 
 export const runtime = "nodejs";
@@ -37,16 +39,23 @@ export async function GET(request: Request) {
       jobName: "CHECKIN_OUTBOX",
       status: "STARTED",
     });
-    const result = await dispatchIntegrationOutbox();
+    const [messages, integrations, housekeeping] = await Promise.all([
+      dispatchMessageOutbox(),
+      dispatchIntegrationOutbox(),
+      runOperationalHousekeeping(),
+    ]);
     const targetCount =
-      resultCount(result.crm, "claimed") +
-      resultCount(result.adminAlert, "claimed");
+      messages.claimed +
+      resultCount(integrations.crm, "claimed") +
+      resultCount(integrations.adminAlert, "claimed");
     const sentCount =
-      resultCount(result.crm, "delivered") +
-      resultCount(result.adminAlert, "delivered");
+      messages.sent +
+      resultCount(integrations.crm, "delivered") +
+      resultCount(integrations.adminAlert, "delivered");
     const failedCount =
-      resultCount(result.crm, "failed") +
-      resultCount(result.adminAlert, "failed");
+      messages.failed +
+      resultCount(integrations.crm, "failed") +
+      resultCount(integrations.adminAlert, "failed");
     await recordCronExecution({
       requestId: context.requestId,
       jobName: "CHECKIN_OUTBOX",
@@ -55,7 +64,12 @@ export async function GET(request: Request) {
       sentCount,
       failedCount,
     });
-    return jsonResponse(context, { ok: true, ...result });
+    return jsonResponse(context, {
+      ok: true,
+      messages,
+      integrations,
+      housekeeping,
+    });
   } catch (error) {
     await recordCronFailureSafely(
       { requestId: context.requestId, jobName: "CHECKIN_OUTBOX" },

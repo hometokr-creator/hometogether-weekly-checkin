@@ -52,14 +52,19 @@ export function AdminLoginForm({
         return;
       }
 
-      const { data: isAdmin, error: permissionError } = await supabase.rpc(
-        "is_admin",
-        { required_permission: "CHECKIN_READ" },
-      );
+      const sessionResponse = await fetch("/api/admin/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
 
-      if (permissionError || isAdmin !== true) {
+      if (!sessionResponse.ok) {
         await supabase.auth.signOut();
-        setErrorMessage("이 계정에는 홈투게더 관리자 권한이 없습니다.");
+        const message =
+          sessionResponse.status === 503
+            ? "관리자 이메일 설정을 확인해 주세요."
+            : "이 계정에는 홈투게더 관리자 권한이 없습니다.";
+        setErrorMessage(message);
         return;
       }
 

@@ -73,6 +73,7 @@ interface MemoryState {
   responses: Map<string, StoredResponse>;
   supportCases: Map<string, SupportCaseSummary>;
   messageLogs: Map<string, MessageLogRecord>;
+  pendingDeliveries: Map<string, DispatchCandidate>;
   developmentTokens: Map<string, { label: string; role: string }>;
 }
 
@@ -138,6 +139,7 @@ function seedState(): MemoryState {
     responses: new Map(),
     supportCases: new Map(),
     messageLogs: new Map(),
+    pendingDeliveries: new Map(),
     developmentTokens: new Map(),
   };
 
@@ -157,13 +159,13 @@ function seedState(): MemoryState {
     const host: Participant = {
       id: `demo-host-${index + 1}`,
       displayName: `집주인 ${index + 1}`,
-      phone: `0101000${String(1000 + index).slice(-4)}`,
+      phone: `+82101000${String(1000 + index).slice(-4)}`,
       role: "HOST",
     };
     const guest: Participant = {
       id: `demo-guest-${index + 1}`,
       displayName: `학생 ${index + 1}`,
-      phone: `0102000${String(2000 + index).slice(-4)}`,
+      phone: `+82102000${String(2000 + index).slice(-4)}`,
       role: "GUEST",
     };
     state.participants.set(host.id, host);
@@ -280,6 +282,7 @@ function resetMemoryRepositoryState(): void {
   current.responses = seeded.responses;
   current.supportCases = seeded.supportCases;
   current.messageLogs = seeded.messageLogs;
+  current.pendingDeliveries = seeded.pendingDeliveries;
   current.developmentTokens = seeded.developmentTokens;
 }
 
@@ -504,12 +507,13 @@ export class MemoryCheckinRepository implements CheckinRepository {
         candidates.push({
           invitation,
           rawToken,
+          recipientId: participant.id,
           recipientName: participant.displayName,
           phone: participant.phone,
           counterpartLabel: participant.role === "HOST" ? "학생분" : "집주인분",
           period: invitation.period,
           deadline: formatDeadline(new Date(invitation.expiresAt)),
-          idempotencyKey: `weekly:${weekKey}:${participant.id}:initial`,
+          idempotencyKey: `weekly:${weekKey}:${participant.id}:${match.id}:initial`,
         });
       }
     }
@@ -535,27 +539,70 @@ export class MemoryCheckinRepository implements CheckinRepository {
       candidates.push({
         invitation,
         rawToken,
+        recipientId: participant.id,
         recipientName: participant.displayName,
         phone: participant.phone,
         counterpartLabel: participant.role === "HOST" ? "학생분" : "집주인분",
         period: invitation.period,
         deadline: formatDeadline(new Date(invitation.expiresAt)),
-        idempotencyKey: `weekly:${run.weekStart.slice(0, 10)}:${participant.id}:reminder`,
+        idempotencyKey: `weekly:${run.weekStart.slice(0, 10)}:${participant.id}:${invitation.matchId}:reminder`,
       });
     }
     return candidates;
   }
 
+  async enqueueWeeklyMessages(now: Date) {
+    const candidates = await this.createWeeklyInvitations(now);
+    for (const candidate of candidates) {
+      candidate.deliveryScope = "PRODUCTION";
+      this.state.pendingDeliveries.set(candidate.idempotencyKey, candidate);
+    }
+    return { queued: candidates.length, dataQualityCount: 0 };
+  }
+
+  async enqueueReminderMessages(now: Date) {
+    const candidates = await this.createReminderCandidates(now);
+    for (const candidate of candidates) {
+      candidate.deliveryScope = "PRODUCTION";
+      this.state.pendingDeliveries.set(candidate.idempotencyKey, candidate);
+    }
+    return { queued: candidates.length, dataQualityCount: 0 };
+  }
+
+  async claimMessageDeliveries(options: {
+    allowProduction: boolean;
+    allowAdminTest: boolean;
+    limit: number;
+  }): Promise<DispatchCandidate[]> {
+    if (!options.allowProduction) return [];
+    const claimed = [...this.state.pendingDeliveries.values()].slice(0, options.limit);
+    for (const candidate of claimed) {
+      this.state.pendingDeliveries.delete(candidate.idempotencyKey);
+      candidate.attemptCount = (candidate.attemptCount ?? 0) + 1;
+      candidate.maxAttempts = 5;
+    }
+    return claimed;
+  }
+
+  async saveMessageTemplate(
+    candidate: DispatchCandidate,
+    templateCode: string,
+    variables: Record<string, string>,
+  ): Promise<void> {
+    void variables;
+    candidate.templateCode = templateCode;
+  }
+
   async recordMessageResult(
     candidate: DispatchCandidate,
-    messageType: "WEEKLY_CHECKIN" | "WEEKLY_CHECKIN_REMINDER",
+    messageType: "WEEKLY_CHECKIN" | "WEEKLY_CHECKIN_REMINDER" | "ALIMTALK_TEST",
     provider: string,
     result: MessagingResult,
   ): Promise<void> {
     const existing = this.state.messageLogs.get(candidate.idempotencyKey);
     this.state.messageLogs.set(candidate.idempotencyKey, {
       id: existing?.id ?? randomUUID(),
-      invitationId: candidate.invitation.id,
+      invitationId: candidate.invitation?.id ?? "admin-test",
       provider,
       messageType,
       recipientMasked: maskPhone(candidate.phone),
@@ -567,10 +614,14 @@ export class MemoryCheckinRepository implements CheckinRepository {
       attemptCount: (existing?.attemptCount ?? 0) + 1,
       createdAt: existing?.createdAt ?? iso(new Date()),
     });
-    candidate.invitation.status = result.success ? "SENT" : "FAILED";
-    if (result.success) {
+    if (candidate.invitation) {
+      candidate.invitation.status = result.success ? "SENT" : "FAILED";
+    }
+    if (result.success && candidate.invitation) {
       if (messageType === "WEEKLY_CHECKIN") candidate.invitation.sentAt = iso(new Date());
-      else candidate.invitation.reminderSentAt = iso(new Date());
+      else if (messageType === "WEEKLY_CHECKIN_REMINDER") {
+        candidate.invitation.reminderSentAt = iso(new Date());
+      }
     }
   }
 

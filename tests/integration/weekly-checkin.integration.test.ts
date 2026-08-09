@@ -9,6 +9,7 @@ import {
 import { getPublicCheckin, submitCheckin } from "@/lib/checkin/service";
 import { QUESTIONNAIRE_VERSION, type CheckinSubmission } from "@/lib/checkin/types";
 import { createWeeklyCheckins } from "@/lib/jobs/create-weekly-checkins";
+import { dispatchMessageOutbox } from "@/lib/jobs/dispatch-message-outbox";
 import type { MessagingProvider } from "@/lib/messaging/provider";
 
 function positiveSubmission(): CheckinSubmission {
@@ -177,22 +178,27 @@ describe("weekly delivery jobs", () => {
       success: true,
       providerMessageId: `test-${sendWeeklyCheckin.mock.calls.length}`,
     }));
-    const provider: MessagingProvider = { sendWeeklyCheckin };
+    const provider: MessagingProvider = {
+      sendWeeklyCheckin,
+      getStatus: vi.fn(async () => ({ success: false, status: "UNKNOWN" as const })),
+      verifyCallback: vi.fn(async () => ({ valid: true })),
+    };
     const now = new Date("2026-08-09T09:00:00.000Z");
 
     const summaries = await Promise.all([
-      createWeeklyCheckins({ repository, provider, now, appBaseUrl: "https://example.test" }),
-      createWeeklyCheckins({ repository, provider, now, appBaseUrl: "https://example.test" }),
+      createWeeklyCheckins({ repository, now }),
+      createWeeklyCheckins({ repository, now }),
     ]);
     const third = await createWeeklyCheckins({
       repository,
-      provider,
       now,
-      appBaseUrl: "https://example.test",
     });
 
     expect(summaries.map((summary) => summary.created).sort((a, b) => a - b)).toEqual([0, 12]);
     expect(third.created).toBe(0);
+    expect(sendWeeklyCheckin).not.toHaveBeenCalled();
+    const dispatched = await dispatchMessageOutbox({ repository, provider, limit: 25 });
+    expect(dispatched).toMatchObject({ claimed: 12, sent: 12, failed: 0 });
     expect(sendWeeklyCheckin).toHaveBeenCalledTimes(12);
     expect(getMemoryRepositoryTestSnapshot().messageLogs).toHaveLength(12);
   });
@@ -208,7 +214,7 @@ describe("weekly delivery jobs", () => {
     );
 
     expect(completed).toBeDefined();
-    expect(candidates.some((item) => item.invitation.id === completed?.invitationId)).toBe(false);
+    expect(candidates.some((item) => item.invitation?.id === completed?.invitationId)).toBe(false);
   });
 });
 
@@ -219,15 +225,15 @@ describe("paired responses and admin handling", () => {
       new Date("2026-08-09T09:00:00.000Z"),
     );
     const guest = candidates.find(
-      (candidate) => candidate.invitation.matchId === "demo-match-6" && candidate.invitation.role === "GUEST",
+      (candidate) => candidate.invitation?.matchId === "demo-match-6" && candidate.invitation.role === "GUEST",
     );
     const host = candidates.find(
-      (candidate) => candidate.invitation.matchId === "demo-match-6" && candidate.invitation.role === "HOST",
+      (candidate) => candidate.invitation?.matchId === "demo-match-6" && candidate.invitation.role === "HOST",
     );
 
     expect(guest).toBeDefined();
     expect(host).toBeDefined();
-    if (!guest || !host) throw new Error("Missing mismatch candidates");
+    if (!guest?.invitation || !host?.invitation) throw new Error("Missing mismatch candidates");
 
     const red = safetySubmission();
     const redRisk = calculateRisk(red, await repository.getRiskHistory(guest.invitation.tokenHash));
@@ -267,4 +273,3 @@ describe("paired responses and admin handling", () => {
     expect(acknowledged?.acknowledgementAt).toEqual(expect.any(String));
   });
 });
-

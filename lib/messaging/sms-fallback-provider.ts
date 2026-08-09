@@ -3,6 +3,10 @@ import {
   sanitizeProviderError,
   type MessagingProvider,
   type MessagingResult,
+  type MessagingStatusInput,
+  type MessagingStatusResult,
+  type MessagingCallbackInput,
+  type MessagingCallbackResult,
   type WeeklyCheckinMessageInput,
 } from "@/lib/messaging/provider";
 
@@ -44,6 +48,21 @@ class GenericSmsProvider implements MessagingProvider {
       };
     }
   }
+
+  async getStatus(input: MessagingStatusInput): Promise<MessagingStatusResult> {
+    return {
+      success: false,
+      status: "UNKNOWN",
+      providerMessageId: input.providerMessageId,
+      errorCode: "SMS_STATUS_UNSUPPORTED",
+      failureClass: "UNKNOWN",
+    };
+  }
+
+  async verifyCallback(input: MessagingCallbackInput): Promise<MessagingCallbackResult> {
+    void input;
+    return { valid: false, errorCode: "SMS_CALLBACK_UNSUPPORTED" };
+  }
 }
 
 export class SmsFallbackMessagingProvider implements MessagingProvider {
@@ -62,5 +81,13 @@ export class SmsFallbackMessagingProvider implements MessagingProvider {
     // duplicate cross-channel notification while delivery is unknown.
     if (result.success || result.errorCode === "KAKAO_TIMEOUT_UNKNOWN") return result;
     return this.sms.sendWeeklyCheckin(input);
+  }
+
+  getStatus(input: MessagingStatusInput): Promise<MessagingStatusResult> {
+    return this.primary.getStatus(input);
+  }
+
+  verifyCallback(input: MessagingCallbackInput): Promise<MessagingCallbackResult> {
+    return this.primary.verifyCallback(input);
   }
 }

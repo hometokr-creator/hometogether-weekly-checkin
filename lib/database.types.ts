@@ -35,6 +35,11 @@ export type Database = {
       admin_memberships: {
         Row: {
           created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          grant_source: string
+          granted_by: string | null
           is_active: boolean
           permissions: string[]
           updated_at: string
@@ -42,6 +47,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          grant_source?: string
+          granted_by?: string | null
           is_active?: boolean
           permissions?: string[]
           updated_at?: string
@@ -49,6 +59,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          deactivation_reason?: string | null
+          grant_source?: string
+          granted_by?: string | null
           is_active?: boolean
           permissions?: string[]
           updated_at?: string
@@ -243,32 +258,243 @@ export type Database = {
         }
         Relationships: []
       }
-      homes: {
+      data_import_batches: {
         Row: {
-          city: string | null
+          applied_at: string | null
+          counts: Json
           created_at: string
-          district: string | null
+          created_by: string
+          error_summary: Json
+          file_name: string
+          file_sha256: string
           id: string
-          is_active: boolean
-          name: string
+          plan_sha256: string
+          purge_after: string
+          status: string
           updated_at: string
         }
         Insert: {
-          city?: string | null
+          applied_at?: string | null
+          counts?: Json
           created_at?: string
-          district?: string | null
+          created_by: string
+          error_summary?: Json
+          file_name: string
+          file_sha256: string
           id?: string
-          is_active?: boolean
-          name: string
+          plan_sha256: string
+          purge_after?: string
+          status?: string
           updated_at?: string
         }
         Update: {
+          applied_at?: string | null
+          counts?: Json
+          created_at?: string
+          created_by?: string
+          error_summary?: Json
+          file_name?: string
+          file_sha256?: string
+          id?: string
+          plan_sha256?: string
+          purge_after?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_import_batches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_memberships"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      data_import_rows: {
+        Row: {
+          batch_id: string
+          created_at: string
+          errors: Json
+          guest_profile_id: string | null
+          home_id: string | null
+          host_profile_id: string | null
+          id: string
+          match_id: string | null
+          normalized_data: Json
+          purge_after: string
+          row_number: number
+          row_sha256: string
+          status: string
+          warnings: Json
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          errors?: Json
+          guest_profile_id?: string | null
+          home_id?: string | null
+          host_profile_id?: string | null
+          id?: string
+          match_id?: string | null
+          normalized_data?: Json
+          purge_after?: string
+          row_number: number
+          row_sha256: string
+          status?: string
+          warnings?: Json
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          errors?: Json
+          guest_profile_id?: string | null
+          home_id?: string | null
+          host_profile_id?: string | null
+          id?: string
+          match_id?: string | null
+          normalized_data?: Json
+          purge_after?: string
+          row_number?: number
+          row_sha256?: string
+          status?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_import_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "data_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_import_rows_guest_profile_id_fkey"
+            columns: ["guest_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_import_rows_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_import_rows_host_profile_id_fkey"
+            columns: ["host_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_import_rows_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homes: {
+        Row: {
+          address: string | null
+          city: string | null
+          created_at: string
+          district: string | null
+          host_profile_id: string | null
+          id: string
+          is_active: boolean
+          name: string
+          source_record_id: string | null
+          source_system: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
           city?: string | null
           created_at?: string
           district?: string | null
+          host_profile_id?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          source_record_id?: string | null
+          source_system?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          created_at?: string
+          district?: string | null
+          host_profile_id?: string | null
           id?: string
           is_active?: boolean
           name?: string
+          source_record_id?: string | null
+          source_system?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homes_host_profile_id_fkey"
+            columns: ["host_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hometogether_rule_admins: {
+        Row: {
+          created_at: string
+          email: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      hometogether_rule_sessions: {
+        Row: {
+          created_at: string
+          created_by: string
+          guest_token: string
+          host_token: string
+          id: string
+          state: Json
+          token_expires_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          guest_token?: string
+          host_token?: string
+          id?: string
+          state: Json
+          token_expires_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          guest_token?: string
+          host_token?: string
+          id?: string
+          state?: Json
+          token_expires_at?: string
           updated_at?: string
         }
         Relationships: []
@@ -284,12 +510,14 @@ export type Database = {
           destination: string
           event_id: string
           event_type: string
+          failure_class: string | null
           id: string
           is_test: boolean
           last_error_sanitized: string | null
           last_http_status: number | null
           lease_owner: string | null
           lease_until: string | null
+          max_attempts: number
           next_attempt_at: string | null
           payload: Json
           status: string
@@ -305,12 +533,14 @@ export type Database = {
           destination: string
           event_id?: string
           event_type: string
+          failure_class?: string | null
           id?: string
           is_test?: boolean
           last_error_sanitized?: string | null
           last_http_status?: number | null
           lease_owner?: string | null
           lease_until?: string | null
+          max_attempts?: number
           next_attempt_at?: string | null
           payload: Json
           status?: string
@@ -326,12 +556,14 @@ export type Database = {
           destination?: string
           event_id?: string
           event_type?: string
+          failure_class?: string | null
           id?: string
           is_test?: boolean
           last_error_sanitized?: string | null
           last_http_status?: number | null
           lease_owner?: string | null
           lease_until?: string | null
+          max_attempts?: number
           next_attempt_at?: string | null
           payload?: Json
           status?: string
@@ -349,6 +581,8 @@ export type Database = {
           id: string
           move_in_date: string
           move_out_date: string | null
+          source_record_id: string | null
+          source_system: string | null
           status: string
           updated_at: string
         }
@@ -361,6 +595,8 @@ export type Database = {
           id?: string
           move_in_date: string
           move_out_date?: string | null
+          source_record_id?: string | null
+          source_system?: string | null
           status?: string
           updated_at?: string
         }
@@ -373,6 +609,8 @@ export type Database = {
           id?: string
           move_in_date?: string
           move_out_date?: string | null
+          source_record_id?: string | null
+          source_system?: string | null
           status?: string
           updated_at?: string
         }
@@ -406,6 +644,7 @@ export type Database = {
           created_at: string
           error_code: string | null
           error_message_sanitized: string | null
+          failure_class: string | null
           id: string
           is_test: boolean
           message_log_id: string
@@ -417,6 +656,7 @@ export type Database = {
           created_at?: string
           error_code?: string | null
           error_message_sanitized?: string | null
+          failure_class?: string | null
           id?: string
           is_test?: boolean
           message_log_id: string
@@ -428,6 +668,7 @@ export type Database = {
           created_at?: string
           error_code?: string | null
           error_message_sanitized?: string | null
+          failure_class?: string | null
           id?: string
           is_test?: boolean
           message_log_id?: string
@@ -448,61 +689,82 @@ export type Database = {
         Row: {
           attempt_count: number
           created_at: string
+          delivery_scope: string
           error_code: string | null
           error_message_sanitized: string | null
+          failure_class: string | null
           id: string
           idempotency_key: string
           invitation_id: string | null
           is_test: boolean
           lease_owner: string | null
           lease_until: string | null
+          max_attempts: number
           message_type: string
           next_attempt_at: string | null
           provider: string
           provider_message_id: string | null
           recipient_masked: string
+          recipient_phone: string | null
+          recipient_profile_id: string | null
           sent_at: string | null
           status: string
+          template_code: string | null
+          template_variables: Json
           updated_at: string
         }
         Insert: {
           attempt_count?: number
           created_at?: string
+          delivery_scope?: string
           error_code?: string | null
           error_message_sanitized?: string | null
+          failure_class?: string | null
           id?: string
           idempotency_key: string
           invitation_id?: string | null
           is_test?: boolean
           lease_owner?: string | null
           lease_until?: string | null
+          max_attempts?: number
           message_type: string
           next_attempt_at?: string | null
           provider: string
           provider_message_id?: string | null
           recipient_masked: string
+          recipient_phone?: string | null
+          recipient_profile_id?: string | null
           sent_at?: string | null
           status?: string
+          template_code?: string | null
+          template_variables?: Json
           updated_at?: string
         }
         Update: {
           attempt_count?: number
           created_at?: string
+          delivery_scope?: string
           error_code?: string | null
           error_message_sanitized?: string | null
+          failure_class?: string | null
           id?: string
           idempotency_key?: string
           invitation_id?: string | null
           is_test?: boolean
           lease_owner?: string | null
           lease_until?: string | null
+          max_attempts?: number
           message_type?: string
           next_attempt_at?: string | null
           provider?: string
           provider_message_id?: string | null
           recipient_masked?: string
+          recipient_phone?: string | null
+          recipient_profile_id?: string | null
           sent_at?: string | null
           status?: string
+          template_code?: string | null
+          template_variables?: Json
           updated_at?: string
         }
         Relationships: [
@@ -513,6 +775,13 @@ export type Database = {
             referencedRelation: "weekly_checkin_invitations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "message_logs_recipient_profile_id_fkey"
+            columns: ["recipient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -520,30 +789,42 @@ export type Database = {
           auth_user_id: string | null
           created_at: string
           display_name: string
+          email: string | null
           id: string
           is_active: boolean
-          phone: string
+          notification_enabled: boolean
+          phone: string | null
           profile_type: string
+          source_record_id: string | null
+          source_system: string | null
           updated_at: string
         }
         Insert: {
           auth_user_id?: string | null
           created_at?: string
           display_name: string
+          email?: string | null
           id?: string
           is_active?: boolean
-          phone: string
+          notification_enabled?: boolean
+          phone?: string | null
           profile_type: string
+          source_record_id?: string | null
+          source_system?: string | null
           updated_at?: string
         }
         Update: {
           auth_user_id?: string | null
           created_at?: string
           display_name?: string
+          email?: string | null
           id?: string
           is_active?: boolean
-          phone?: string
+          notification_enabled?: boolean
+          phone?: string | null
           profile_type?: string
+          source_record_id?: string | null
+          source_system?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -571,6 +852,74 @@ export type Database = {
           window_start?: string
         }
         Relationships: []
+      }
+      student_email_verifications: {
+        Row: {
+          application_id: string | null
+          attempt_count: number
+          consumed_at: string | null
+          created_at: string
+          domain_status: string
+          email: string
+          email_normalized: string
+          expires_at: string
+          id: string
+          otp_hash: string
+          request_ip_hash: string
+          resend_available_at: string
+          status: string
+          university_id: string | null
+          university_name_raw: string
+          updated_at: string
+          verified_at: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          attempt_count?: number
+          consumed_at?: string | null
+          created_at?: string
+          domain_status: string
+          email: string
+          email_normalized: string
+          expires_at: string
+          id: string
+          otp_hash: string
+          request_ip_hash: string
+          resend_available_at: string
+          status?: string
+          university_id?: string | null
+          university_name_raw: string
+          updated_at?: string
+          verified_at?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          attempt_count?: number
+          consumed_at?: string | null
+          created_at?: string
+          domain_status?: string
+          email?: string
+          email_normalized?: string
+          expires_at?: string
+          id?: string
+          otp_hash?: string
+          request_ip_hash?: string
+          resend_available_at?: string
+          status?: string
+          university_id?: string | null
+          university_name_raw?: string
+          updated_at?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_email_verifications_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       support_case_events: {
         Row: {
@@ -702,6 +1051,68 @@ export type Database = {
             columns: ["response_id"]
             isOneToOne: true
             referencedRelation: "weekly_checkin_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      universities: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          normalized_name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          normalized_name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          normalized_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      university_email_domains: {
+        Row: {
+          active: boolean
+          created_at: string
+          domain: string
+          id: string
+          university_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          domain: string
+          id?: string
+          university_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          domain?: string
+          id?: string
+          university_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_email_domains_university_id_fkey"
+            columns: ["university_id"]
+            isOneToOne: false
+            referencedRelation: "universities"
             referencedColumns: ["id"]
           },
         ]
@@ -1141,6 +1552,33 @@ export type Database = {
         Args: { p_required_permission: string; p_user_id: string }
         Returns: boolean
       }
+      admin_set_membership: {
+        Args: {
+          p_actor_id: string
+          p_is_active: boolean
+          p_permissions: string[]
+          p_reason?: string
+          p_target_user_id: string
+        }
+        Returns: {
+          created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          grant_source: string
+          granted_by: string | null
+          is_active: boolean
+          permissions: string[]
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "admin_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       admin_update_support_case: {
         Args: {
           p_action: string
@@ -1174,10 +1612,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      apply_operational_data_import: {
+        Args: {
+          p_admin_id: string
+          p_counts: Json
+          p_file_name: string
+          p_file_sha256: string
+          p_plan_sha256: string
+          p_rows: Json
+        }
+        Returns: Json
+      }
       bootstrap_first_admin: {
         Args: { p_expected_email: string; p_user_id: string }
         Returns: {
           created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          grant_source: string
+          granted_by: string | null
           is_active: boolean
           permissions: string[]
           updated_at: string
@@ -1193,21 +1647,30 @@ export type Database = {
       can_edit_app: { Args: { check_user_id: string }; Returns: boolean }
       claim_message_deliveries: {
         Args: {
+          p_allow_admin_test?: boolean
+          p_allow_production?: boolean
           p_lease_owner: string
           p_lease_seconds?: number
           p_limit?: number
           p_provider: string
         }
         Returns: {
+          attempt_count: number
+          delivery_scope: string
           expires_at: string
+          failure_class: string
           idempotency_key: string
           invitation_id: string
+          max_attempts: number
           message_log_id: string
           message_type: string
           participant_id: string
           participant_role: string
           phone: string
+          provider_message_id: string
           recipient_name: string
+          template_code: string
+          template_variables: Json
           token_hash: string
           week_end: string
           week_start: string
@@ -1230,12 +1693,14 @@ export type Database = {
           destination: string
           event_id: string
           event_type: string
+          failure_class: string | null
           id: string
           is_test: boolean
           last_error_sanitized: string | null
           last_http_status: number | null
           lease_owner: string | null
           lease_until: string | null
+          max_attempts: number
           next_attempt_at: string | null
           payload: Json
           status: string
@@ -1252,6 +1717,7 @@ export type Database = {
         Args: {
           p_error_code?: string
           p_error_message_sanitized?: string
+          p_failure_class?: string
           p_lease_owner: string
           p_message_log_id: string
           p_next_attempt_at?: string
@@ -1262,21 +1728,28 @@ export type Database = {
         Returns: {
           attempt_count: number
           created_at: string
+          delivery_scope: string
           error_code: string | null
           error_message_sanitized: string | null
+          failure_class: string | null
           id: string
           idempotency_key: string
           invitation_id: string | null
           is_test: boolean
           lease_owner: string | null
           lease_until: string | null
+          max_attempts: number
           message_type: string
           next_attempt_at: string | null
           provider: string
           provider_message_id: string | null
           recipient_masked: string
+          recipient_phone: string | null
+          recipient_profile_id: string | null
           sent_at: string | null
           status: string
+          template_code: string | null
+          template_variables: Json
           updated_at: string
         }
         SetofOptions: {
@@ -1289,6 +1762,7 @@ export type Database = {
       complete_outbox_event: {
         Args: {
           p_error_sanitized?: string
+          p_failure_class?: string
           p_http_status?: number
           p_lease_owner: string
           p_next_attempt_at?: string
@@ -1306,12 +1780,14 @@ export type Database = {
           destination: string
           event_id: string
           event_type: string
+          failure_class: string | null
           id: string
           is_test: boolean
           last_error_sanitized: string | null
           last_http_status: number | null
           lease_owner: string | null
           lease_until: string | null
+          max_attempts: number
           next_attempt_at: string | null
           payload: Json
           status: string
@@ -1345,6 +1821,10 @@ export type Database = {
           remaining: number
           reset_at: string
         }[]
+      }
+      create_student_email_verification: {
+        Args: { p_record: Json }
+        Returns: Json
       }
       create_weekly_checkin_batch:
         | {
@@ -1386,12 +1866,93 @@ export type Database = {
               token_hash: string
             }[]
           }
+      enqueue_admin_alimtalk_test: {
+        Args: {
+          p_admin_id: string
+          p_provider: string
+          p_recipient_phone: string
+          p_template_code: string
+          p_template_variables: Json
+        }
+        Returns: {
+          attempt_count: number
+          created_at: string
+          delivery_scope: string
+          error_code: string | null
+          error_message_sanitized: string | null
+          failure_class: string | null
+          id: string
+          idempotency_key: string
+          invitation_id: string | null
+          is_test: boolean
+          lease_owner: string | null
+          lease_until: string | null
+          max_attempts: number
+          message_type: string
+          next_attempt_at: string | null
+          provider: string
+          provider_message_id: string | null
+          recipient_masked: string
+          recipient_phone: string | null
+          recipient_profile_id: string | null
+          sent_at: string | null
+          status: string
+          template_code: string | null
+          template_variables: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "message_logs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       enqueue_weekly_checkin_reminders: {
         Args: { p_provider?: string; p_run_id: string }
         Returns: number
       }
+      hometogether_get_session: {
+        Args: { p_role: string; p_token: string }
+        Returns: Json
+      }
+      hometogether_is_admin: { Args: never; Returns: boolean }
+      hometogether_update_session: {
+        Args: { p_role: string; p_state: Json; p_token: string }
+        Returns: Json
+      }
       is_admin: { Args: { required_permission?: string }; Returns: boolean }
       is_app_member: { Args: { check_user_id: string }; Returns: boolean }
+      is_weekly_invitation_currently_eligible: {
+        Args: { p_at: string; p_invitation_id: string }
+        Returns: boolean
+      }
+      provision_configured_admin: {
+        Args: {
+          p_expected_email: string
+          p_grant_source?: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          deactivation_reason: string | null
+          grant_source: string
+          granted_by: string | null
+          is_active: boolean
+          permissions: string[]
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "admin_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      purge_expired_data_import_staging: { Args: never; Returns: number }
       purge_expired_rate_limits: { Args: never; Returns: number }
       record_cron_execution: {
         Args: {
@@ -1476,6 +2037,10 @@ export type Database = {
             }
             Returns: Json
           }
+      verify_student_email_otp: {
+        Args: { p_candidate_hash: string; p_email: string; p_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

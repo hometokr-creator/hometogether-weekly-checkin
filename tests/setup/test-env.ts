@@ -8,4 +8,13 @@ delete process.env.ADMIN_ALERT_WEBHOOK_URL;
 process.env.MESSAGING_PROVIDER = "mock";
 process.env.ENABLE_CHECKIN_REMINDERS = "true";
 process.env.APP_BASE_URL = "https://hometogether.test";
-
+process.env.PUBLIC_CHECKIN_BASE_URL = "https://hometogether.test";
+process.env.ALIMTALK_PROVIDER = "test-relay";
+process.env.ALIMTALK_API_BASE_URL = "https://alimtalk.test";
+process.env.ALIMTALK_API_KEY = "test-api-key";
+process.env.ALIMTALK_API_SECRET = "test-api-secret";
+process.env.ALIMTALK_SENDER_PROFILE = "test-sender-profile";
+process.env.ALIMTALK_TEMPLATE_CODE = "test-template";
+process.env.ALIMTALK_CALLBACK_SECRET = "test-callback-secret-123456789";
+process.env.TEST_ALIMTALK_CALLBACK_ROUTE_IMPLEMENTED = "true";
+process.env.CHECKIN_SENDING_ENABLED = "true";

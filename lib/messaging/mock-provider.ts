@@ -5,6 +5,10 @@ import {
   renderWeeklyCheckinMessage,
   type MessagingProvider,
   type MessagingResult,
+  type MessagingStatusInput,
+  type MessagingStatusResult,
+  type MessagingCallbackInput,
+  type MessagingCallbackResult,
   type WeeklyCheckinMessageInput,
 } from "@/lib/messaging/provider";
 
@@ -31,5 +35,18 @@ export class MockMessagingProvider implements MessagingProvider {
 
     console.info("[weekly-checkin:mock]", safePreview);
     return { success: true, providerMessageId };
+  }
+
+  async getStatus(input: MessagingStatusInput): Promise<MessagingStatusResult> {
+    return {
+      success: true,
+      status: "DELIVERED",
+      providerMessageId: input.providerMessageId ?? `mock_${input.idempotencyKey}`,
+    };
+  }
+
+  async verifyCallback(input: MessagingCallbackInput): Promise<MessagingCallbackResult> {
+    void input;
+    return { valid: true, status: "DELIVERED" };
   }
 }

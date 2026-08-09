@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 
 import { hasSupabaseServerConfig } from "@/lib/checkin/repository-factory";
+import { classifyHttpFailure, retryDelayMs } from "@/lib/messaging/provider";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Destination = "CRM" | "ADMIN_ALERT";
@@ -12,6 +13,7 @@ type OutboxRow = {
   event_type: string;
   payload: Record<string, unknown>;
   created_at: string;
+  attempt_count: number;
 };
 
 function destinationConfig(destination: Destination) {
@@ -45,7 +47,7 @@ async function deliverDestination(destination: Destination) {
   const { data, error } = await supabase.rpc("claim_outbox_events", {
     p_destination: destination,
     p_lease_owner: leaseOwner,
-    p_limit: 50,
+    p_limit: 25,
     p_lease_seconds: 120,
   });
   if (error) throw error;
@@ -83,6 +85,10 @@ async function deliverDestination(destination: Destination) {
     let httpStatus: number | null = null;
     let errorMessage: string | null = null;
     let retryable = false;
+    let failureClass: "TRANSIENT" | "PERMANENT" | "UNKNOWN" | null = null;
+    let providerRetryAfter: number | undefined;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
       const response = await fetch(config.url, {
         method: "POST",
@@ -93,14 +99,21 @@ async function deliverDestination(destination: Destination) {
           "x-hometogether-signature": sign(config.secret, timestamp, body),
         },
         body,
+        signal: controller.signal,
       });
       httpStatus = response.status;
       success = response.ok;
-      retryable = response.status === 429 || response.status >= 500;
+      failureClass = classifyHttpFailure(response.status);
+      retryable = !success && failureClass === "TRANSIENT";
+      const retryAfter = Number(response.headers.get("retry-after"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) providerRetryAfter = retryAfter;
       if (!response.ok) errorMessage = `Webhook returned HTTP ${response.status}`;
     } catch (deliveryError) {
       retryable = true;
+      failureClass = "TRANSIENT";
       errorMessage = safeError(deliveryError);
+    } finally {
+      clearTimeout(timeout);
     }
 
     const { error: completeError } = await supabase.rpc("complete_outbox_event", {
@@ -111,8 +124,11 @@ async function deliverDestination(destination: Destination) {
       p_error_sanitized: errorMessage,
       p_retryable: retryable,
       p_next_attempt_at: retryable
-        ? new Date(Date.now() + 5 * 60 * 1000).toISOString()
+        ? new Date(
+            Date.now() + retryDelayMs(event.attempt_count, providerRetryAfter),
+          ).toISOString()
         : null,
+      p_failure_class: success ? null : failureClass ?? "PERMANENT",
     });
     if (completeError) throw completeError;
     if (success) delivered += 1;

@@ -2,6 +2,10 @@
   "name": "hometogether-weekly-checkin",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -16,18 +20,24 @@
     "test:e2e": "playwright test",
     "test:e2e:production": "PRODUCTION_E2E=1 playwright test e2e/production-weekly-checkin.spec.ts --project=production-mobile-chromium",
     "test:e2e:production:persistence": "PRODUCTION_E2E=1 PRODUCTION_PERSISTENCE_E2E=1 playwright test e2e/production-persistence.spec.ts --project=production-mobile-chromium",
+    "migrate:checkin-data": "tsx scripts/migrate-checkin-data.ts",
     "prod:test:preflight": "tsx scripts/production-validation/cli.ts preflight",
     "prod:test:seed": "tsx scripts/production-validation/cli.ts seed",
     "prod:test:verify-db": "tsx scripts/production-validation/cli.ts verify-db",
     "prod:test:state": "tsx scripts/production-validation/cli.ts state",
-    "prod:test:cleanup": "tsx scripts/production-validation/cli.ts cleanup"
+    "prod:test:cleanup": "tsx scripts/production-validation/cli.ts cleanup",
+    "backup:logical": "tsx scripts/operations/logical-backup.ts",
+    "backup:verify": "tsx scripts/operations/verify-logical-backup.ts",
+    "admin:grant": "tsx scripts/admin-grant.ts",
+    "admin:manage": "tsx scripts/admin-manage.ts",
+    "deploy:production:pro": "pnpm dlx vercel@latest deploy --prod --local-config vercel.pro.json"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.111.0",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.28.0",
-    "next": "16.2.12",
+    "next": "16.3.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
@@ -37,12 +47,12 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
-    "@types/node": "^20",
+    "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.0",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",

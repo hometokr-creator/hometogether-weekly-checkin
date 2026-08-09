@@ -1,6 +1,8 @@
 # 홈투게더 공동생활 주간 체크인
 
-Production: https://hometogether-weekly-checkin.vercel.app
+Production: https://checkin.hometogether.kr
+
+Fallback Vercel URL: https://hometogether-weekly-checkin.vercel.app
 
 실행·데이터베이스·메시징·배포 안내는 [README_WEEKLY_CHECKIN.md](./README_WEEKLY_CHECKIN.md)를 확인하세요.
 
