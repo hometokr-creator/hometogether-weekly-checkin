@@ -7,7 +7,7 @@ import {
   logSanitizedApiError,
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
-import { AdminAuthorizationError, requireAdmin } from "@/lib/auth/admin";
+import { AdminAuthorizationError, requireAdminAal2 } from "@/lib/auth/admin";
 import {
   getAlimtalkRuntimeConfig,
   getMessageQueueProvider,
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const admin = await requireAdmin("CHECKIN_READ");
+    const admin = await requireAdminAal2("SUPER_ADMIN");
     if (!admin.permissions.includes("SUPER_ADMIN") || !admin.userId) {
       throw new AdminAuthorizationError("FORBIDDEN");
     }

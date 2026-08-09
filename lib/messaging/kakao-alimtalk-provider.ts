@@ -2,6 +2,7 @@ import {
   createHmac,
   timingSafeEqual,
 } from "node:crypto";
+import { z } from "zod";
 
 import {
   classifyHttpFailure,
@@ -37,13 +38,28 @@ function retryAfterSeconds(response: Response): number | undefined {
   return Math.max(1, Math.ceil((date - Date.now()) / 1000));
 }
 
-function safeBodyStatus(value: unknown): MessagingStatusResult["status"] {
+export function normalizeProviderDeliveryStatus(
+  value: unknown,
+): MessagingStatusResult["status"] {
   const status = String(value ?? "").toUpperCase();
-  if (["DELIVERED", "SENT", "SUCCESS"].includes(status)) return "DELIVERED";
+  if (["DELIVERED", "SUCCESS"].includes(status)) return "DELIVERED";
+  if (["SENT", "SUBMITTED"].includes(status)) return "SENT";
+  if (["ACCEPTED", "PROCESSING", "QUEUED", "PENDING"].includes(status)) {
+    return "ACCEPTED";
+  }
   if (["FAILED", "REJECTED", "CANCELLED"].includes(status)) return "FAILED";
-  if (["PENDING", "ACCEPTED", "PROCESSING", "QUEUED"].includes(status)) return "PENDING";
   return "UNKNOWN";
 }
+
+const callbackBodySchema = z.object({
+  eventId: z.string().trim().min(8).max(160),
+  messageId: z.string().trim().min(1).max(200),
+  status: z.string().trim().min(1).max(80),
+  occurredAt: z.string().datetime({ offset: true }).optional(),
+  errorCode: z.string().trim().max(80).optional(),
+}).strict();
+
+const CALLBACK_MAX_AGE_SECONDS = 5 * 60;
 
 /**
  * Relay-neutral Alimtalk adapter. Adjust only this payload/response mapping when
@@ -147,7 +163,7 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
           retryAfterSeconds: retryAfterSeconds(response),
         };
       }
-      const status = safeBodyStatus(body.status);
+      const status = normalizeProviderDeliveryStatus(body.status);
       return {
         success: status === "DELIVERED",
         status,
@@ -173,9 +189,21 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
     if (!this.config.callbackSecret) {
       return { valid: false, errorCode: "CALLBACK_SECRET_MISSING" };
     }
+    const timestamp = input.headers.get("x-alimtalk-timestamp") ?? "";
     const supplied = input.headers.get("x-alimtalk-signature") ?? "";
+    if (!/^\d{10}$/.test(timestamp)) {
+      return { valid: false, errorCode: "INVALID_CALLBACK_TIMESTAMP" };
+    }
+    const timestampSeconds = Number(timestamp);
+    if (
+      !Number.isSafeInteger(timestampSeconds) ||
+      Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds) >
+        CALLBACK_MAX_AGE_SECONDS
+    ) {
+      return { valid: false, errorCode: "STALE_CALLBACK_TIMESTAMP" };
+    }
     const expected = `sha256=${createHmac("sha256", this.config.callbackSecret)
-      .update(input.rawBody)
+      .update(`${timestamp}.${input.rawBody}`)
       .digest("hex")}`;
     const suppliedBuffer = Buffer.from(supplied);
     const expectedBuffer = Buffer.from(expected);
@@ -186,12 +214,21 @@ export class KakaoAlimtalkProvider implements MessagingProvider {
       return { valid: false, errorCode: "INVALID_CALLBACK_SIGNATURE" };
     }
     try {
-      const body = JSON.parse(input.rawBody) as Record<string, unknown>;
+      const parsed = callbackBodySchema.safeParse(JSON.parse(input.rawBody));
+      if (!parsed.success) {
+        return { valid: false, errorCode: "INVALID_CALLBACK_BODY" };
+      }
+      const headerEventId = input.headers.get("x-alimtalk-event-id");
+      if (headerEventId && headerEventId !== parsed.data.eventId) {
+        return { valid: false, errorCode: "CALLBACK_EVENT_ID_MISMATCH" };
+      }
       return {
         valid: true,
-        providerMessageId:
-          body.messageId || body.id ? String(body.messageId ?? body.id) : undefined,
-        status: safeBodyStatus(body.status),
+        providerEventId: parsed.data.eventId,
+        providerMessageId: parsed.data.messageId,
+        status: normalizeProviderDeliveryStatus(parsed.data.status),
+        occurredAt: parsed.data.occurredAt,
+        errorCode: parsed.data.errorCode,
       };
     } catch {
       return { valid: false, errorCode: "INVALID_CALLBACK_BODY" };

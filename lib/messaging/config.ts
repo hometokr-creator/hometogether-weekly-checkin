@@ -22,16 +22,16 @@ export type AlimtalkRuntimeConfig = {
   callbackSecret?: string;
 };
 
-// The current relay-neutral adapter can verify a signed payload, but no vendor
-// callback route or delivery-receipt persistence contract exists yet. Bulk
-// Production sending must stay fail-closed until those pieces are implemented
-// and verified against the selected Alimtalk provider.
+// The provider-neutral callback route and durable receipt state machine are
+// part of the application. Production readiness still requires a signing
+// secret, selected provider, approved template, credentials, and the explicit
+// CHECKIN_SENDING_ENABLED gate.
 function callbackRouteImplemented(): boolean {
-  return (
-    process.env.NODE_ENV === "test" &&
-    process.env.TEST_ALIMTALK_CALLBACK_ROUTE_IMPLEMENTED === "true"
-  );
+  return true;
 }
+
+const providerKeyPattern = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+const disabledProviderKeys = new Set(["mock", "disabled", "none"]);
 
 function value(...names: string[]): string | undefined {
   for (const name of names) {
@@ -75,7 +75,8 @@ export function getMessagingConfigurationStatus(): MessagingConfigurationStatus 
     "APP_BASE_URL",
     "NEXT_PUBLIC_APP_URL",
   );
-  const providerSelected = !["", "mock", "disabled", "none"].includes(provider);
+  const providerSelected =
+    providerKeyPattern.test(provider) && !disabledProviderKeys.has(provider);
   const credentialsConfigured = Boolean(
     providerSelected && validApiBaseUrl(baseUrl) && apiKey && apiSecret,
   );
@@ -90,8 +91,9 @@ export function getMessagingConfigurationStatus(): MessagingConfigurationStatus 
     credentialsConfigured &&
     senderProfileConfigured &&
     templateConfigured &&
+    callbackConfigured &&
     validPublicCheckinUrl(publicCheckinUrl);
-  const readyForProduction = readyForAdminTest && callbackConfigured && sendingEnabled;
+  const readyForProduction = readyForAdminTest && sendingEnabled;
   const missing: string[] = [];
 
   if (!providerSelected) missing.push("ALIMTALK_PROVIDER");
@@ -158,7 +160,15 @@ export function getPublicCheckinBaseUrl(): string {
   return parsed.origin.replace(/\/$/, "");
 }
 
-/** Stable queue provider; rows can be claimed after a relay vendor changes. */
+/**
+ * Canonical provider key shared by outbox rows, status lookups, and callbacks.
+ * Changing vendors intentionally leaves old rows bound to their original
+ * provider rather than silently claiming them through a different adapter.
+ */
 export function getMessageQueueProvider(): string {
-  return "alimtalk";
+  const provider = getMessagingConfigurationStatus().provider;
+  if (!providerKeyPattern.test(provider) || disabledProviderKeys.has(provider)) {
+    throw new Error("ALIMTALK_PROVIDER_NOT_CONFIGURED");
+  }
+  return provider;
 }

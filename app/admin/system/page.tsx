@@ -108,8 +108,10 @@ export default async function AdminSystemPage() {
             <StatusRow label="자격증명" state={configured(status.alimtalk.credentialsConfigured)} value={status.alimtalk.credentialsConfigured ? "Configured" : "Missing"} />
             <StatusRow label="발신 프로필" state={configured(status.alimtalk.senderProfileConfigured)} value={status.alimtalk.senderProfileConfigured ? "Configured" : "Missing"} />
             <StatusRow label="승인 템플릿" state={configured(status.alimtalk.templateConfigured)} value={status.alimtalk.templateConfigured ? "Configured" : "Missing"} />
+            <StatusRow label="서명 Callback" state={configured(status.alimtalk.callbackConfigured)} value={status.alimtalk.callbackConfigured ? "Configured" : "Missing"} detail="5분 replay window와 provider event ID 중복 방지를 적용합니다." />
             <StatusRow label="대량 발송 게이트" state={configured(status.alimtalk.sendingEnabled)} value={status.alimtalk.sendingEnabled ? "Enabled" : "Disabled"} detail="CHECKIN_SENDING_ENABLED는 기본적으로 비활성입니다." />
             <p className="m-0 text-sm text-[#60706a]">최근 집계: 성공 {status.alimtalk.recentSent}건 · 실패 {status.alimtalk.recentFailed}건</p>
+            <p className="m-0 text-sm text-[#60706a]">Delivery: accepted {status.alimtalk.delivery.ACCEPTED} · sent {status.alimtalk.delivery.SENT} · delivered {status.alimtalk.delivery.DELIVERED} · failed {status.alimtalk.delivery.FAILED} · unknown {status.alimtalk.delivery.UNKNOWN}</p>
             {isSuperAdmin ? (
               <div className="mt-2 border-t border-[#e0e7e3] pt-4">
                 <h3 className="mb-2 mt-0 text-base font-black">관리자 테스트 1건</h3>
@@ -118,7 +120,7 @@ export default async function AdminSystemPage() {
                   disabledReason={
                     status.alimtalk.readyForAdminTest
                       ? undefined
-                      : "Provider 자격증명, 발신 프로필과 승인 템플릿을 모두 설정해야 합니다."
+                      : "Provider 자격증명, 발신 프로필, 승인 템플릿과 서명 callback을 모두 설정해야 합니다."
                   }
                 />
               </div>
@@ -139,6 +141,7 @@ export default async function AdminSystemPage() {
         <SectionCard title="운영 관리" description="백업 상태는 Supabase 관리 화면에서 확인한 값을 환경변수로 명시합니다.">
           <div className="grid gap-3">
             <StatusRow label="등록 관리자" state={status.admin.activeCount > 0 ? "OK" : "WARNING"} value={`${status.admin.activeCount}명`} detail={`ADMIN_EMAILS ${status.admin.allowlistCount}개 · 형식 ${status.admin.allowlistValid ? "정상" : "오류"}`} />
+            <StatusRow label="관리자 MFA 강제" state={status.admin.mfaEnforcementEnabled ? "OK" : "WARNING"} value={status.admin.mfaEnforcementEnabled ? "Enabled" : "Enrollment pending"} detail="검증된 TOTP가 있는 계정은 전역 게이트 전에도 민감 작업에서 AAL2가 필요합니다." />
             <StatusRow label="Automatic backup" state={status.backup.automatic === "ENABLED" ? "OK" : status.backup.automatic === "DISABLED" ? "WARNING" : "UNKNOWN"} value={status.backup.automatic} detail={`Supabase plan: ${status.backup.plan}`} />
             <StatusRow label="PITR" state={status.backup.pitr === "ENABLED" ? "OK" : status.backup.pitr === "DISABLED" ? "WARNING" : "UNKNOWN"} value={status.backup.pitr} />
             <StatusRow label="최근 Cron 성공" state={status.cron.lastSuccessAt ? "OK" : "UNKNOWN"} value={status.cron.lastSuccessAt ? formatKoreanDateTime(status.cron.lastSuccessAt) : "기록 없음"} detail={status.cron.lastErrorCode ? `최근 오류 코드: ${status.cron.lastErrorCode}` : "최근 오류 코드 없음"} />

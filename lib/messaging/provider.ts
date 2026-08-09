@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 export type ProviderFailureClass = "TRANSIENT" | "PERMANENT" | "UNKNOWN";
+export type MessageDeliveryStatus =
+  | "ACCEPTED"
+  | "SENT"
+  | "DELIVERED"
+  | "FAILED"
+  | "UNKNOWN";
 
 export const weeklyCheckinTemplateVariablesSchema = z
   .object({
@@ -41,7 +47,7 @@ export interface MessagingStatusInput {
 }
 
 export interface MessagingStatusResult extends MessagingResult {
-  status: "PENDING" | "DELIVERED" | "FAILED" | "UNKNOWN";
+  status: MessageDeliveryStatus;
 }
 
 export interface MessagingCallbackInput {
@@ -51,8 +57,10 @@ export interface MessagingCallbackInput {
 
 export interface MessagingCallbackResult {
   valid: boolean;
+  providerEventId?: string;
   providerMessageId?: string;
-  status?: "PENDING" | "DELIVERED" | "FAILED" | "UNKNOWN";
+  status?: MessageDeliveryStatus;
+  occurredAt?: string;
   errorCode?: string;
 }
 

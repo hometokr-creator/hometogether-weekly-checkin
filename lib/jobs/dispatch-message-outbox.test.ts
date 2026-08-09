@@ -74,22 +74,49 @@ describe("message outbox operations", () => {
     const unknown = candidate({ failureClass: "UNKNOWN", attemptCount: 2 });
     const repository = repositoryWithClaims([unknown]);
     const messaging = provider({
-      getStatus: vi.fn(async () => ({ success: false, status: "PENDING" as const })),
+      getStatus: vi.fn(async () => ({ success: false, status: "ACCEPTED" as const })),
     });
     const result = await dispatchMessageOutbox({ repository, provider: messaging });
 
     expect(messaging.getStatus).toHaveBeenCalledOnce();
     expect(messaging.sendWeeklyCheckin).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ claimed: 1, retry: 1, reconciled: 1 });
+    expect(result).toMatchObject({ claimed: 1, sent: 1, retry: 0, reconciled: 1 });
     expect(repository.recordMessageResult).toHaveBeenCalledWith(
       unknown,
       "WEEKLY_CHECKIN",
-      "alimtalk",
+      "test-relay",
       expect.objectContaining({
-        success: false,
-        errorCode: "PROVIDER_DELIVERY_PENDING",
-        failureClass: "UNKNOWN",
+        success: true,
+        status: "ACCEPTED",
       }),
+    );
+  });
+
+  it("reconciles a transient result carrying a provider ID without resending", async () => {
+    const referenced = candidate({
+      failureClass: "TRANSIENT",
+      providerMessageId: "provider-already-accepted",
+      attemptCount: 2,
+    });
+    const repository = repositoryWithClaims([referenced]);
+    const messaging = provider({
+      getStatus: vi.fn(async () => ({
+        success: false,
+        status: "SENT" as const,
+        providerMessageId: "provider-already-accepted",
+      })),
+    });
+
+    const result = await dispatchMessageOutbox({ repository, provider: messaging });
+
+    expect(messaging.getStatus).toHaveBeenCalledOnce();
+    expect(messaging.sendWeeklyCheckin).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ claimed: 1, sent: 1, retry: 0, reconciled: 1 });
+    expect(repository.recordMessageResult).toHaveBeenCalledWith(
+      referenced,
+      "WEEKLY_CHECKIN",
+      "test-relay",
+      expect.objectContaining({ success: true, status: "SENT" }),
     );
   });
 
@@ -103,7 +130,7 @@ describe("message outbox operations", () => {
     expect(repository.recordMessageResult).toHaveBeenCalledWith(
       unknown,
       "WEEKLY_CHECKIN",
-      "alimtalk",
+      "test-relay",
       expect.objectContaining({
         errorCode: "DELIVERY_UNRESOLVED_MAX_ATTEMPTS",
         failureClass: "PERMANENT",

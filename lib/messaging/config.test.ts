@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getMessageQueueProvider,
   getMessagingConfigurationStatus,
   getPublicCheckinBaseUrl,
 } from "@/lib/messaging/config";
@@ -23,7 +24,6 @@ const managedKeys = [
   "KAKAO_CALLBACK_SECRET",
   "CHECKIN_SENDING_ENABLED",
   "PUBLIC_CHECKIN_BASE_URL",
-  "TEST_ALIMTALK_CALLBACK_ROUTE_IMPLEMENTED",
 ] as const;
 
 const originals = Object.fromEntries(managedKeys.map((key) => [key, process.env[key]]));
@@ -59,7 +59,7 @@ describe("Alimtalk configuration", () => {
     expect(() => createMessagingProvider()).toThrow(/ALIMTALK_CONFIGURATION_MISSING/);
   });
 
-  it("supports legacy KAKAO aliases but blocks bulk sending without callback delivery receipts", () => {
+  it("supports legacy KAKAO aliases and recognizes the signed callback route", () => {
     clearCanonicalConfig();
     process.env.MESSAGING_PROVIDER = "kakao";
     process.env.KAKAO_API_BASE_URL = "https://relay.example.test";
@@ -76,12 +76,45 @@ describe("Alimtalk configuration", () => {
       credentialsConfigured: true,
       senderProfileConfigured: true,
       templateConfigured: true,
-      callbackConfigured: false,
+      callbackConfigured: true,
       readyForAdminTest: true,
+      readyForProduction: true,
+    });
+    expect(status.missing).not.toContain("ALIMTALK_CALLBACK_ROUTE_IMPLEMENTATION");
+    expect(JSON.stringify(status)).not.toContain("legacy-key");
+    expect(getMessageQueueProvider()).toBe("kakao");
+  });
+
+  it("rejects an invalid provider key before queue or callback matching", () => {
+    clearCanonicalConfig();
+    process.env.ALIMTALK_PROVIDER = "invalid/provider";
+
+    const status = getMessagingConfigurationStatus();
+    expect(status.readyForAdminTest).toBe(false);
+    expect(status.missing).toContain("ALIMTALK_PROVIDER");
+    expect(() => getMessageQueueProvider()).toThrow(
+      "ALIMTALK_PROVIDER_NOT_CONFIGURED",
+    );
+  });
+
+  it("does not allow an administrator test without callback verification", () => {
+    clearCanonicalConfig();
+    process.env.MESSAGING_PROVIDER = "kakao";
+    process.env.ALIMTALK_API_BASE_URL = "https://relay.example.test";
+    process.env.ALIMTALK_API_KEY = "fixture-key";
+    process.env.ALIMTALK_API_SECRET = "fixture-secret";
+    process.env.ALIMTALK_SENDER_PROFILE = "fixture-sender";
+    process.env.ALIMTALK_TEMPLATE_CODE = "fixture-template";
+    process.env.PUBLIC_CHECKIN_BASE_URL = "https://checkin.example.test";
+
+    const status = getMessagingConfigurationStatus();
+    expect(status).toMatchObject({
+      callbackConfigured: false,
+      readyForAdminTest: false,
       readyForProduction: false,
     });
-    expect(status.missing).toContain("ALIMTALK_CALLBACK_ROUTE_IMPLEMENTATION");
-    expect(JSON.stringify(status)).not.toContain("legacy-key");
+    expect(status.missing).toContain("ALIMTALK_CALLBACK_SECRET");
+    expect(() => createMessagingProvider()).toThrow(/ALIMTALK_CONFIGURATION_MISSING/);
   });
 
   it("prefers the public check-in origin", () => {
