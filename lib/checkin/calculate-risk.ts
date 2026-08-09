@@ -29,6 +29,16 @@ const ORANGE_PRIVACY_SUBCATEGORIES = new Set([
 
 const REPEATED_FREQUENCIES = new Set(["SEVERAL_TIMES", "ALMOST_DAILY", "ONGOING"]);
 
+export function isPairedRiskMismatch(
+  left: RiskLevel,
+  right: RiskLevel | undefined,
+): boolean {
+  return (
+    (left === "GREEN" && (right === "ORANGE" || right === "RED")) ||
+    (right === "GREEN" && (left === "ORANGE" || left === "RED"))
+  );
+}
+
 function setAtLeast(current: RiskLevel, minimum: RiskLevel): RiskLevel {
   return SCORE[current] >= SCORE[minimum] ? current : minimum;
 }
@@ -165,9 +175,7 @@ export function calculateRisk(
   }
 
   const counterpart = history.counterpartRiskLevel;
-  const pairedMismatch =
-    (riskLevel === "GREEN" && (counterpart === "ORANGE" || counterpart === "RED")) ||
-    (counterpart === "GREEN" && (riskLevel === "ORANGE" || riskLevel === "RED"));
+  const pairedMismatch = isPairedRiskMismatch(riskLevel, counterpart);
 
   if (pairedMismatch) {
     riskLevel = setAtLeast(riskLevel, "YELLOW");

@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { calculateInvitationExpiry, createOpaqueToken, hashToken } from "@/lib/checkin/token";
+import { isPairedRiskMismatch } from "@/lib/checkin/calculate-risk";
 import {
   QUESTIONNAIRE_VERSION,
   type CheckinSubmission,
@@ -407,6 +408,18 @@ export class MemoryCheckinRepository implements CheckinRepository {
 
     if (new Date(invitation.expiresAt).getTime() <= Date.now()) throw new Error("INVITATION_EXPIRED");
 
+    const counterpart = [...this.state.responses.values()].find(
+      (item) =>
+        item.matchId === invitation.matchId &&
+        item.participantId !== invitation.participantId,
+    );
+    const pairedMismatch =
+      risk.pairedMismatch || isPairedRiskMismatch(risk.riskLevel, counterpart?.riskLevel);
+    const riskLevel = pairedMismatch && risk.riskLevel === "GREEN" ? "YELLOW" : risk.riskLevel;
+    const riskReasons = pairedMismatch
+      ? [...new Set([...risk.riskReasons, "PAIRED_RISK_MISMATCH"])]
+      : risk.riskReasons;
+
     const response: StoredResponse = {
       id: randomUUID(),
       invitationId: invitation.id,
@@ -414,9 +427,9 @@ export class MemoryCheckinRepository implements CheckinRepository {
       participantId: invitation.participantId,
       role: invitation.role,
       submission,
-      riskLevel: risk.riskLevel,
-      riskReasons: risk.riskReasons,
-      pairedMismatch: risk.pairedMismatch,
+      riskLevel,
+      riskReasons,
+      pairedMismatch,
       submittedAt: iso(new Date()),
     };
     this.state.responses.set(response.id, response);
@@ -424,13 +437,13 @@ export class MemoryCheckinRepository implements CheckinRepository {
     invitation.completedAt = response.submittedAt;
     invitation.draft = undefined;
 
-    const counterpart = [...this.state.responses.values()].find(
-      (item) =>
-        item.matchId === response.matchId &&
-        item.participantId !== response.participantId &&
-        item.id !== response.id,
-    );
-    if (risk.pairedMismatch && counterpart) counterpart.pairedMismatch = true;
+    if (pairedMismatch && counterpart) {
+      counterpart.pairedMismatch = true;
+      counterpart.riskReasons = [
+        ...new Set([...counterpart.riskReasons, "PAIRED_RISK_MISMATCH"]),
+      ];
+      if (counterpart.riskLevel === "GREEN") counterpart.riskLevel = "YELLOW";
+    }
 
     let supportCase: SupportCaseSummary | undefined;
     if (risk.requiresSupportCase) {

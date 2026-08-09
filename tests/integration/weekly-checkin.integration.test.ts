@@ -254,6 +254,48 @@ describe("paired responses and admin handling", () => {
     expect(hostRow?.pairedMismatch).toBe(true);
   });
 
+  it("serializes simultaneous paired submissions and keeps retries idempotent", async () => {
+    const repository = new MemoryCheckinRepository();
+    const candidates = await repository.createWeeklyInvitations(
+      new Date("2026-08-09T09:00:00.000Z"),
+    );
+    const guest = candidates.find(
+      (candidate) =>
+        candidate.invitation?.matchId === "demo-match-6" &&
+        candidate.invitation.role === "GUEST",
+    );
+    const host = candidates.find(
+      (candidate) =>
+        candidate.invitation?.matchId === "demo-match-6" &&
+        candidate.invitation.role === "HOST",
+    );
+
+    if (!guest?.rawToken || !host?.rawToken) {
+      throw new Error("Missing simultaneous mismatch candidates");
+    }
+
+    const [guestResult, hostResult] = await Promise.all([
+      submitCheckin(guest.rawToken, safetySubmission()),
+      submitCheckin(host.rawToken, positiveSubmission()),
+    ]);
+    const retry = await submitCheckin(host.rawToken, positiveSubmission());
+    const responses = getMemoryRepositoryTestSnapshot().responses.filter(
+      (response) => response.matchId === "demo-match-6",
+    );
+    const guestResponse = responses.find((response) => response.id === guestResult.responseId);
+    const hostResponse = responses.find((response) => response.id === hostResult.responseId);
+
+    expect(responses).toHaveLength(2);
+    expect(guestResponse).toMatchObject({ riskLevel: "RED", pairedMismatch: true });
+    expect(hostResponse).toMatchObject({ riskLevel: "YELLOW", pairedMismatch: true });
+    expect(guestResponse?.riskReasons).toContain("PAIRED_RISK_MISMATCH");
+    expect(hostResponse?.riskReasons).toContain("PAIRED_RISK_MISMATCH");
+    expect(retry).toMatchObject({
+      responseId: hostResult.responseId,
+      alreadyCompleted: true,
+    });
+  });
+
   it("orders unacknowledged RED first and records acknowledgement", async () => {
     await submitCheckin("demo-normal-host", positiveSubmission());
     const repository = new MemoryCheckinRepository();

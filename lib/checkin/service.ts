@@ -1,6 +1,7 @@
 import "server-only";
 
 import { calculateRisk } from "@/lib/checkin/calculate-risk";
+import { createQuestionnaireSnapshot } from "@/lib/checkin/question-tree";
 import { getCheckinRepository } from "@/lib/checkin/repository-factory";
 import { hashToken, isUsableTokenFormat } from "@/lib/checkin/token";
 import type { CheckinSubmission, PublicInvitation } from "@/lib/checkin/types";
@@ -122,9 +123,15 @@ export async function submitCheckin(token: string, rawSubmission: unknown) {
   }
   assertInvitationUsable(invitation);
 
-  // questionnaireVersion and the full answer snapshot are persisted. The
-  // request schema intentionally has no client-supplied risk fields.
-  const submission = parsed.data as CheckinSubmission;
+  // The browser identifies the supported questionnaire version, but it is not
+  // an authority for the audit snapshot. Persist the server-owned definition
+  // so a manipulated request cannot rewrite historical question wording or
+  // branching metadata.
+  const validatedSubmission = parsed.data as CheckinSubmission;
+  const submission: CheckinSubmission = {
+    ...validatedSubmission,
+    questionSnapshot: createQuestionnaireSnapshot(),
+  };
   const history = await repository.getRiskHistory(tokenHash);
   const risk = calculateRisk(submission, history);
 
