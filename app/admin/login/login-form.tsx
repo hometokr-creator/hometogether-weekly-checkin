@@ -68,6 +68,18 @@ export function AdminLoginForm({
         return;
       }
 
+      const session = (await sessionResponse.json()) as {
+        mfa?: { currentLevel?: string | null; nextLevel?: string | null };
+      };
+      if (
+        session.mfa?.nextLevel === "aal2" &&
+        session.mfa.currentLevel !== "aal2"
+      ) {
+        router.replace(`/admin/mfa?next=${encodeURIComponent(nextPath)}`);
+        router.refresh();
+        return;
+      }
+
       router.replace(nextPath);
       router.refresh();
     } catch {

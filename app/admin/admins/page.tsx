@@ -1,13 +1,13 @@
 import { AdminManagement } from "@/components/admin/AdminManagement";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { requireAdminPage } from "@/lib/auth/admin";
+import { requireAdminAal2Page } from "@/lib/auth/admin";
 import { getAdminEmailConfigurationSummary } from "@/lib/auth/admin-config";
 import { listAdminMembers } from "@/lib/auth/admin-members";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMembersPage() {
-  const admin = await requireAdminPage("SUPER_ADMIN", "/admin/admins");
+  const admin = await requireAdminAal2Page("SUPER_ADMIN", "/admin/admins");
   if (!admin.userId) {
     return null;
   }

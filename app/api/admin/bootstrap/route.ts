@@ -9,8 +9,15 @@ import {
   logSanitizedApiError,
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
+import {
+  hasOversizedDeclaredBody,
+  readLimitedJson,
+  RequestBodyTooLargeError,
+} from "@/app/api/_shared/request-body";
+import { consumeAdminBootstrapRateLimit } from "@/lib/auth/bootstrap-rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getConfiguredAdminEmails } from "@/lib/auth/admin-config";
+import { extractClientAddress } from "@/lib/checkin/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +26,8 @@ const bootstrapSchema = z.object({
   email: z.string().trim().email().max(254),
   bootstrapSecret: z.string().min(16).max(512),
 });
+const MAX_BOOTSTRAP_REQUEST_BYTES = 8192;
+const BOOTSTRAP_RATE_LIMIT_SECONDS = 15 * 60;
 
 function isAllowedOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
@@ -64,8 +73,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 8192) {
+  if (hasOversizedDeclaredBody(request, MAX_BOOTSTRAP_REQUEST_BYTES)) {
     return publicErrorResponse(
       context,
       "PAYLOAD_TOO_LARGE",
@@ -90,10 +98,44 @@ export async function POST(request: Request) {
     );
   }
 
+  let rateLimitAllowed: boolean;
+  try {
+    rateLimitAllowed = await consumeAdminBootstrapRateLimit({
+      clientAddress: extractClientAddress(request.headers, request.url),
+      limit: 5,
+      windowSeconds: BOOTSTRAP_RATE_LIMIT_SECONDS,
+    });
+  } catch (error) {
+    logSanitizedApiError("admin_bootstrap_rate_limit_failed", context, error);
+    return publicErrorResponse(
+      context,
+      "BOOTSTRAP_UNAVAILABLE",
+      "최초 관리자 등록을 일시적으로 사용할 수 없습니다.",
+      503,
+    );
+  }
+  if (!rateLimitAllowed) {
+    return publicErrorResponse(
+      context,
+      "RATE_LIMITED",
+      "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+      429,
+      { "retry-after": String(BOOTSTRAP_RATE_LIMIT_SECONDS) },
+    );
+  }
+
   let raw: unknown;
   try {
-    raw = await request.json();
-  } catch {
+    raw = await readLimitedJson(request, MAX_BOOTSTRAP_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return publicErrorResponse(
+        context,
+        "PAYLOAD_TOO_LARGE",
+        "요청 크기가 너무 큽니다.",
+        413,
+      );
+    }
     return publicErrorResponse(
       context,
       "INVALID_BODY",
