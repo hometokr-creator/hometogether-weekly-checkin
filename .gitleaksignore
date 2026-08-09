@@ -1,0 +1,6 @@
+# Historical README examples use an explicit replace-with-secret placeholder.
+# Scope each allow entry to the immutable commit, file, rule, and line so new
+# Authorization header findings remain blocking.
+ce5a410eb15b144b930d2172e9fb71481e5dd54c:README_WEEKLY_CHECKIN.md:curl-auth-header:212
+ce5a410eb15b144b930d2172e9fb71481e5dd54c:README_WEEKLY_CHECKIN.md:curl-auth-header:213
+ce5a410eb15b144b930d2172e9fb71481e5dd54c:README_WEEKLY_CHECKIN.md:curl-auth-header:214

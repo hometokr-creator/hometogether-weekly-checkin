@@ -1,0 +1,113 @@
+name: Protected Production Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validation scope
+        required: true
+        default: read-only-preflight
+        type: choice
+        options:
+          - read-only-preflight
+          - isolated-fixture-e2e
+      confirm_test_writes:
+        description: For isolated-fixture-e2e only, enter I_ACKNOWLEDGE_PRODUCTION_TEST_WRITES
+        required: false
+        type: string
+      confirm_external_alerts_blocked:
+        description: For isolated-fixture-e2e only, enter I_CONFIRMED_TEST_ALERTS_ARE_BLOCKED
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-production-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Manual production validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-validation
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+          run_install: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require explicit fixture-write acknowledgements
+        if: inputs.operation == 'isolated-fixture-e2e'
+        env:
+          CONFIRM_TEST_WRITES: ${{ inputs.confirm_test_writes }}
+          CONFIRM_EXTERNAL_ALERTS_BLOCKED: ${{ inputs.confirm_external_alerts_blocked }}
+        run: |
+          set -euo pipefail
+          [ "${CONFIRM_TEST_WRITES}" = "I_ACKNOWLEDGE_PRODUCTION_TEST_WRITES" ]
+          [ "${CONFIRM_EXTERNAL_ALERTS_BLOCKED}" = "I_CONFIRMED_TEST_ALERTS_ARE_BLOCKED" ]
+
+      - name: Read-only Production preflight
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRODUCTION_VALIDATION_RUN_ID: gha_${{ github.run_id }}_${{ github.run_attempt }}
+        run: pnpm prod:test:preflight
+
+      - name: Install Chromium for isolated fixture validation
+        if: inputs.operation == 'isolated-fixture-e2e'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run isolated Production fixture validation
+        if: inputs.operation == 'isolated-fixture-e2e'
+        env:
+          PRODUCTION_E2E: "1"
+          PRODUCTION_VALIDATION_KEEP_DATA: "true"
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRODUCTION_VALIDATION_RUN_ID: gha_${{ github.run_id }}_${{ github.run_attempt }}
+          PRODUCTION_VALIDATION_ACK: ${{ inputs.confirm_test_writes }}
+          PRODUCTION_VALIDATION_RED_SAFE: ${{ inputs.confirm_external_alerts_blocked }}
+        run: pnpm test:e2e:production
+
+      - name: Verify isolated fixture persistence
+        if: inputs.operation == 'isolated-fixture-e2e'
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRODUCTION_VALIDATION_RUN_ID: gha_${{ github.run_id }}_${{ github.run_attempt }}
+        run: pnpm prod:test:verify-db
+
+      - name: Clean up exact-ID isolated fixtures
+        if: always() && inputs.operation == 'isolated-fixture-e2e'
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRODUCTION_VALIDATION_RUN_ID: gha_${{ github.run_id }}_${{ github.run_attempt }}
+          PRODUCTION_VALIDATION_ACK: ${{ inputs.confirm_test_writes }}
+        run: pnpm prod:test:cleanup
