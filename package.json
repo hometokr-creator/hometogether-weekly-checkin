@@ -28,6 +28,9 @@
     "prod:test:cleanup": "tsx scripts/production-validation/cli.ts cleanup",
     "backup:logical": "tsx scripts/operations/logical-backup.ts",
     "backup:verify": "tsx scripts/operations/verify-logical-backup.ts",
+    "backup:restore-drill": "tsx scripts/operations/restore-logical-backup.ts",
+    "migrations:validate": "tsx scripts/operations/validate-migrations.ts",
+    "repository:safety": "tsx scripts/operations/validate-repository-safety.ts",
     "admin:grant": "tsx scripts/admin-grant.ts",
     "admin:manage": "tsx scripts/admin-manage.ts",
     "deploy:production:pro": "pnpm dlx vercel@latest deploy --prod --local-config vercel.pro.json"

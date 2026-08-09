@@ -94,6 +94,17 @@ export const ANONYMOUS_RLS_TARGETS = [
   { table: "weekly_checkin_issues", column: "id", requireGrantDenied: false },
   { table: "support_cases", column: "id", requireGrantDenied: false },
   { table: "message_logs", column: "id", requireGrantDenied: false },
+  { table: "message_delivery_receipts", column: "id", requireGrantDenied: true },
+  { table: "audit_logs", column: "id", requireGrantDenied: false },
+] as const;
+
+export const ORDINARY_PARTICIPANT_RLS_TARGETS = [
+  { table: "weekly_checkin_invitations", column: "id", requireGrantDenied: false },
+  { table: "weekly_checkin_responses", column: "id", requireGrantDenied: false },
+  { table: "weekly_checkin_issues", column: "id", requireGrantDenied: false },
+  { table: "support_cases", column: "id", requireGrantDenied: false },
+  { table: "message_logs", column: "id", requireGrantDenied: false },
+  { table: "message_delivery_receipts", column: "id", requireGrantDenied: true },
   { table: "audit_logs", column: "id", requireGrantDenied: false },
 ] as const;
 
@@ -308,6 +319,22 @@ export async function runProductionPreflight(options: { write?: boolean } = {}):
 function databaseFailure(context: string, error: { code?: string } | null): never {
   const code = error?.code ? ` (${error.code})` : "";
   throw new Error(`${context}에 실패했습니다${code}. 민감한 DB 오류 상세는 출력하지 않았습니다.`);
+}
+
+export function verifiedBoundaryVisibleRows(options: {
+  table: string;
+  requireGrantDenied: boolean;
+  data: unknown[] | null;
+  error: { code?: string } | null;
+  roleLabel: string;
+}): number {
+  const { table, requireGrantDenied, data, error, roleLabel } = options;
+  if (error?.code === "42501" && requireGrantDenied) return 0;
+  if (error) databaseFailure(`${table} ${roleLabel} RLS 확인`, error);
+  if (requireGrantDenied) {
+    throw new Error(`${table} ${roleLabel} SELECT grant가 회수되지 않았습니다.`);
+  }
+  return data?.length ?? 0;
 }
 
 async function insertRows(
@@ -630,17 +657,15 @@ export async function verifyOrdinaryParticipantBoundaries(): Promise<{
 
   try {
     let visibleRawRows = 0;
-    for (const table of [
-      "weekly_checkin_invitations",
-      "weekly_checkin_responses",
-      "weekly_checkin_issues",
-      "support_cases",
-      "message_logs",
-      "audit_logs",
-    ]) {
-      const { data, error } = await client.from(table).select("id").limit(5);
-      if (error) databaseFailure(`${table} 일반 참가자 RLS 확인`, error);
-      visibleRawRows += data?.length ?? 0;
+    for (const { table, column, requireGrantDenied } of ORDINARY_PARTICIPANT_RLS_TARGETS) {
+      const { data, error } = await client.from(table).select(column).limit(5);
+      visibleRawRows += verifiedBoundaryVisibleRows({
+        table,
+        requireGrantDenied,
+        data,
+        error,
+        roleLabel: "일반 참가자",
+      });
     }
     if (visibleRawRows !== 0) {
       throw new Error("일반 참가자가 비공개 체크인 원본 행을 조회할 수 있습니다.");
