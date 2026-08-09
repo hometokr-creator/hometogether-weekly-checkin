@@ -106,6 +106,7 @@ export function adminAuthorizationErrorResponse(
   const message = {
     UNAUTHENTICATED: "관리자 로그인이 필요합니다.",
     FORBIDDEN: "이 작업을 수행할 관리자 권한이 없습니다.",
+    MFA_REQUIRED: "이 작업을 수행하려면 관리자 MFA 인증을 완료해야 합니다.",
     MISCONFIGURED: "관리자 인증 설정을 확인해 주세요.",
   }[error.code];
 

@@ -10,6 +10,7 @@ import {
 } from "@/app/api/_shared/responses";
 import {
   requireAdmin,
+  requireAdminAal2,
 } from "@/lib/auth/admin";
 import type { SupportCaseActionInput } from "@/lib/checkin/repository";
 import { getCheckinRepository } from "@/lib/checkin/repository-factory";
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const admin = await requireAdmin("CASE_WRITE");
+    const admin = await requireAdminAal2("CASE_WRITE");
     const parsed = updateCaseSchema.safeParse(await request.json());
 
     if (!parsed.success) {

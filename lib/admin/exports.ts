@@ -13,21 +13,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type JsonRow = Record<string, unknown>;
 type PageResult = { data: unknown; error: unknown };
+type CsvPermissionRequirement = readonly [
+  AdminRequiredPermission,
+  ...AdminRequiredPermission[],
+];
 
 const PAGE_SIZE = 500;
 const MAX_EXPORT_ROWS = 50_000;
 
-const datasetPermissions: Record<CsvDataset, AdminRequiredPermission> = {
-  profiles: "SUPER_ADMIN",
-  hosts: "SUPER_ADMIN",
-  guests: "SUPER_ADMIN",
-  homes: "SUPER_ADMIN",
-  "active-matches": "SUPER_ADMIN",
-  matches: "SUPER_ADMIN",
-  "weekly-checkins": "CHECKIN_READ",
-  "checkin-responses": "SAFETY_READ",
-  issues: "SAFETY_READ",
-  "notification-outbox": "SUPER_ADMIN",
+const datasetPermissions: Record<CsvDataset, CsvPermissionRequirement> = {
+  profiles: ["SUPER_ADMIN"],
+  hosts: ["SUPER_ADMIN"],
+  guests: ["SUPER_ADMIN"],
+  homes: ["SUPER_ADMIN"],
+  "active-matches": ["SUPER_ADMIN"],
+  matches: ["SUPER_ADMIN"],
+  "weekly-checkins": ["DATA_EXPORT"],
+  "checkin-responses": ["DATA_EXPORT", "SAFETY_READ"],
+  issues: ["DATA_EXPORT", "SAFETY_READ"],
+  "notification-outbox": ["SUPER_ADMIN"],
 };
 
 const datasetNames: Record<CsvDataset, string> = {
@@ -43,7 +47,9 @@ const datasetNames: Record<CsvDataset, string> = {
   "notification-outbox": "notification-outbox",
 };
 
-export function requiredPermissionForCsv(dataset: CsvDataset): AdminRequiredPermission {
+export function requiredPermissionsForCsv(
+  dataset: CsvDataset,
+): CsvPermissionRequirement {
   return datasetPermissions[dataset];
 }
 

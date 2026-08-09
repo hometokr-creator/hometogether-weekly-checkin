@@ -24,6 +24,7 @@ import {
   shortId,
 } from "@/components/admin/admin-labels";
 import { requireAdminPage } from "@/lib/auth/admin";
+import { minimizeDashboard } from "@/lib/admin/privacy";
 import { getRecentCronOperations } from "@/lib/auth/cron-operations";
 import {
   desiredActionOptions,
@@ -118,10 +119,13 @@ export default async function AdminCheckinsPage({
   const returnPath = `/admin/checkins${returnParams.size ? `?${returnParams}` : ""}`;
   const admin = await requireAdminPage("CHECKIN_READ", returnPath);
   const canReadSafety = hasPermission(admin.permissions, "SAFETY_READ");
-  const [dashboard, cronOperations] = await Promise.all([
+  const canExportSensitiveData =
+    hasPermission(admin.permissions, "DATA_EXPORT") && canReadSafety;
+  const [rawDashboard, cronOperations] = await Promise.all([
     (await getCheckinRepository()).getDashboard(),
     getRecentCronOperations(),
   ]);
+  const dashboard = minimizeDashboard(rawDashboard, admin.permissions);
 
   const authorizedResponses = canReadSafety
     ? dashboard.responses
@@ -201,7 +205,7 @@ export default async function AdminCheckinsPage({
       description="제출된 응답과 위험 신호를 확인합니다. RED 미확인 응답은 어떤 필터에서도 목록 최상단에 우선 배치됩니다."
       actions={
         <>
-          {canReadSafety ? (
+          {canExportSensitiveData ? (
             <a
               href={`/api/admin/exports/checkin-responses${returnParams.size ? `?${returnParams}` : ""}`}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#9bbcaf] bg-white px-4 text-sm font-extrabold text-[#0d523e] no-underline outline-none hover:bg-[#e7f3ed] focus-visible:ring-4 focus-visible:ring-[#176b52]/20"
