@@ -259,24 +259,37 @@ test("remote rows, inherited is_test, server risks, RLS and the authenticated ad
   await page.goto("/admin/checkins?includeTest=true");
 
   await expect(page.getByText("테스트 데이터", { exact: false }).first()).toBeVisible();
+  const responseIds = {
+    normal: report.responseIds.normal,
+    cleanliness: report.responseIds.cleanliness,
+    safety: report.responseIds.safety,
+  };
   for (const scenario of ["normal", "cleanliness", "safety"] as const) {
-    await expect(page.getByText(state.scenarios[scenario].participantName, { exact: true })).toBeVisible();
+    expect(responseIds[scenario]).toBeTruthy();
+    await expect(
+      page.locator(`a[href="/admin/checkins/${encodeURIComponent(responseIds[scenario] ?? "missing")}"]`),
+    ).toBeVisible();
+    await expect(
+      page.getByText(state.scenarios[scenario].participantName, { exact: true }),
+    ).toHaveCount(0);
   }
-  const responseCards = page.locator("article");
-  const safetyCard = responseCards.filter({ hasText: state.scenarios.safety.participantName });
+  const responseCards = page.locator('article:has(a[href^="/admin/checkins/"])');
+  const safetyCard = responseCards.filter({
+    has: page.locator(
+      `a[href="/admin/checkins/${encodeURIComponent(responseIds.safety ?? "missing")}"]`,
+    ),
+  });
   await expect(safetyCard).toContainText("RED");
   await expect(safetyCard).toContainText("미확인");
-  const cardTexts = await responseCards.allTextContents();
-  const safetyIndex = cardTexts.findIndex((text) =>
-    text.includes(state.scenarios.safety.participantName),
+  const responseHrefs = await responseCards.evaluateAll((cards) =>
+    cards.map((card) => card.querySelector<HTMLAnchorElement>('a[href^="/admin/checkins/"]')?.getAttribute("href")),
   );
-  const normalIndex = cardTexts.findIndex((text) =>
-    text.includes(state.scenarios.normal.participantName),
-  );
-  const cleanlinessIndex = cardTexts.findIndex((text) =>
-    text.includes(state.scenarios.cleanliness.participantName),
-  );
+  const safetyIndex = responseHrefs.indexOf(`/admin/checkins/${responseIds.safety}`);
+  const normalIndex = responseHrefs.indexOf(`/admin/checkins/${responseIds.normal}`);
+  const cleanlinessIndex = responseHrefs.indexOf(`/admin/checkins/${responseIds.cleanliness}`);
   expect(safetyIndex).toBeGreaterThanOrEqual(0);
+  expect(normalIndex).toBeGreaterThanOrEqual(0);
+  expect(cleanlinessIndex).toBeGreaterThanOrEqual(0);
   expect(safetyIndex).toBeLessThan(normalIndex);
   expect(safetyIndex).toBeLessThan(cleanlinessIndex);
 });

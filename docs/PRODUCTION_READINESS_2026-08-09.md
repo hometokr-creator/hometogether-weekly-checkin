@@ -6,16 +6,19 @@
 ## 현재 판정
 
 웹 애플리케이션, 원격 Supabase schema, custom domain, Cron route, 관리자 화면,
-운영 import/export 도구, Production E2E 검증 도구는 구현돼 있다. 다만 실제 고객
-알림톡은 자격증명과 callback/delivery receipt 계약이 없어 안전하게 비활성 상태다.
+운영 import/export 도구, Production E2E 검증 도구는 구현돼 있다. 현재 hardening
+작업 트리에는 전체 17개 migration source, GitHub Actions, progressive 관리자 MFA,
+provider-neutral callback/receipt 구현도 포함돼 있다. 신규 additive migration 2개의
+Production 적용, 최종 CI/배포 검증 전에는 이 작업 트리를 배포 완료로 간주하지 않는다.
+실제 고객 알림톡은 안전 플래그가 모두 비활성 상태다.
 
 Production 운영 시작 전 다음 외부 의존성이 해소돼야 한다.
 
 - 승인된 알림톡 사업자, sender profile, template, API credential, callback/receipt 계약
 - 현재 활성 HOST/GUEST/home/`ACTIVE` match와 명시적 알림 수신 동의 데이터
-- 영구 `SUPER_ADMIN`
 - managed backup/PITR 또는 승인된 복구 정책
 - Vercel Pro 수준의 outbox 재처리 주기가 필요한지에 대한 운영 결정
+- 운영 관리자의 직접 TOTP QR 등록과 break-glass 절차
 
 ## 코드 구조
 
@@ -32,7 +35,7 @@ Production 운영 시작 전 다음 외부 의존성이 해소돼야 한다.
 | `lib/jobs/` | weekly, reminder, outbox, housekeeping |
 | `lib/webhooks/` | CRM/admin alert webhook outbox |
 | `lib/supabase/` | browser, session, service-role client |
-| `supabase/migrations/` | 현재 application migration 10개 |
+| `supabase/migrations/` | 원격 적용 source 15개 + 신규 pending additive migration 2개 |
 | `scripts/` | backup, import, admin, Production validation CLI |
 | `tests/`, `e2e/` | Vitest 및 Playwright 검증 |
 
@@ -46,7 +49,10 @@ Production 운영 시작 전 다음 외부 의존성이 해소돼야 한다.
 - Supabase RLS, 권한 RPC, rate limit, transaction/idempotency, test-data suppression
 - weekly/reminder/message/integration outbox Cron과 execution log
 - 알림 발송 retry, lease, recipient eligibility 재검증, kill switch
+- provider-neutral signed callback, replay 방지, delivery receipt 상태 영속화
+- progressive TOTP enrollment UI와 민감 작업 AAL2 guard
 - 논리 backup/checksum과 Production E2E/preflight/persistence/cleanup 도구
+- 일반 PR CI와 별도 승인형 Production validation GitHub Actions workflow
 
 상세 기능 및 명령은 `README_WEEKLY_CHECKIN.md`와 `docs/HANDOVER_CHECKLIST.md`를
 우선 참고한다.
@@ -70,28 +76,38 @@ Production 운영 시작 전 다음 외부 의존성이 해소돼야 한다.
 support case/event, message/attempt, integration outbox, signal, audit, rate-limit,
 Cron execution, admin bootstrap, import staging으로 구성된다.
 
-현재 migration은 아래 10개다.
+저장소 작업 트리의 전체 migration order는 아래 17개다.
 
 1. `202608020001_weekly_checkin_schema.sql`
 2. `202608020002_weekly_checkin_security_and_rpcs.sql`
 3. `202608070001_production_safety_and_operations.sql`
-4. `20260807072605_message_outbox_operational.sql`
-5. `20260807072611_operational_data_import.sql`
-6. `20260807072621_admin_operations.sql`
-7. `20260807072845_index_operational_foreign_keys.sql`
-8. `20260809015136_harden_touch_updated_at_search_path.sql`
-9. `20260809015353_harden_legacy_app_files_rls.sql`
-10. `20260809020242_harden_legacy_member_helpers.sql`
+4. `20260807052002_hometogether_auth_and_token_access.sql`
+5. `20260807052931_hometogether_auth_hardening.sql`
+6. `20260807071307_bootstrap_student_email_otp.sql`
+7. `20260807072605_message_outbox_operational.sql`
+8. `20260807072611_operational_data_import.sql`
+9. `20260807072621_admin_operations.sql`
+10. `20260807072845_index_operational_foreign_keys.sql`
+11. `20260809015136_harden_touch_updated_at_search_path.sql`
+12. `20260809015353_harden_legacy_app_files_rls.sql`
+13. `20260809020242_harden_legacy_member_helpers.sql`
+14. `20260809075546_participant_workflow_hardening.sql`
+15. `20260809085834_admin_preset_workflow.sql`
+16. `20260809090321_harden_checkin_submission_transaction.sql`
+17. `20260809090828_harden_admin_privacy_and_message_receipts.sql`
 
 `supabase/seed.sql`은 개발 전용이며 Production에 적용하면 안 된다.
 
-### MISSING
+`supabase/config.toml`은 존재하며 local project ID, PostgreSQL major version,
+migration과 development seed replay를 정의한다. hosted project ref나 credential은
+포함하지 않는다.
 
-- `supabase/config.toml`이 없다.
-- 원격 Supabase migration history에만 존재하는 레거시 migration 3개의 원본이 이
-  저장소에 없다.
-- 이 저장소만으로 깨끗한 새 Supabase project의 전체 레거시 schema를 재현했다는
-  보장은 없다. 원격 schema export와 migration source 복구는 별도 운영 작업이다.
+원격에는 1~15가 적용돼 있다. 과거 원격에만 있던 `20260809075546`과
+`20260809085834` source는 읽기 전용으로 복구했고 정규화 hash가 원격 source와
+일치한다. 16~17은 신규 additive pending migration이다. 따라서 현 시점 상태는 local
+source 17, remote applied 15, remote-only 0, local-only 2다. Production 적용 후에는
+17/17, DB lint, row-count 불변을 다시 확인해야 한다. migration history 밖에서 생성된
+legacy object의 원본 DDL까지 완전 재현한다는 의미는 아니다.
 
 ## 메시징과 Cron
 
@@ -104,12 +120,16 @@ Cron execution, admin bootstrap, import staging으로 구성된다.
 `vercel.pro.json`은 outbox를 10분 주기로 바꾼다. Vercel Pro 이상 여부는 운영자가
 결정해야 한다.
 
+Provider-neutral callback HTTP route, timestamp-bound HMAC 검증, replay window,
+provider event/message ID 기반 idempotent delivery receipt 저장과 상태 전이는
+구현돼 있다.
+
 ### MISSING
 
-- 실제 알림톡 callback HTTP route와 delivery receipt 영속화가 미완성이다.
-- relay-neutral adapter의 payload/status/idempotency mapping은 선택한 사업자 규격으로
-  검증돼야 한다.
+- relay-neutral adapter의 payload/status/idempotency/callback mapping은 선택한 사업자
+  규격으로 end-to-end 검증돼야 한다.
 - 실제 알림톡 자격증명, sender profile, 승인 template, callback secret이 없다.
+- provider console의 callback URL 등록과 실제 delivery receipt 수신 증거가 없다.
 - `CHECKIN_SENDING_ENABLED`는 운영 준비가 끝날 때까지 true로 설정하면 안 된다.
 - CRM/admin alert endpoint도 운영 credential이 연결되지 않았다.
 
@@ -123,7 +143,11 @@ valid phone, home, current contract 관계를 안전하게 제공하지 않으�
 
 - 실제 HOST/GUEST/home/현재 `ACTIVE` match 데이터가 없다.
 - 명시적 notification consent와 유효한 운영 전화번호가 없다.
-- 영구 `SUPER_ADMIN`이 없다.
+
+Production에는 active 영구 `SUPER_ADMIN` 1명이 있고 one-time bootstrap secret은
+제거됐다. TOTP enrollment UI와 민감 작업 AAL2 guard는 구현됐지만, 운영자가 직접
+QR을 스캔해 factor 등록을 완료한 상태는 아직 확인되지 않았다. 기존 관리자 잠금을
+막기 위해 전역 MFA enforcement는 비활성으로 유지한다.
 
 운영 데이터는 `/admin/import` 또는 `pnpm migrate:checkin-data`의 preview → validation
 → plan SHA 확인 → explicit apply 흐름으로만 적재한다. import 전에는 실제 CSV를 Git에
@@ -131,24 +155,31 @@ valid phone, home, current contract 관계를 안전하게 제공하지 않으�
 
 ## Backup 및 복구
 
-현재 논리 backup script와 checksum verifier가 있지만 full PostgreSQL dump, Auth secret,
-Storage object, managed backup/PITR를 대체하지 않는다.
+현재 v3 논리 backup script와 checksum verifier는 동적 Local/Remote migration evidence,
+30개 application table inventory와 pending migration table 근거를 검증한다. full
+PostgreSQL dump, Auth secret, Storage object, managed backup/PITR를 대체하지 않는다.
+기존 기준 백업의 실제 경로와 내용은 Git 문서에 기록하지 않는다.
 
 ### MISSING
 
 - managed backup/PITR가 없다.
-- verified restore drill과 운영 RPO/RTO가 없다.
+- rollback-only 격리 drill은 managed schema 26개 table/49개 row와 Auth FK placeholder를
+  검증하고 전부 rollback해 **부분 성공**했다. 원본 DDL이 없는 legacy table 3개는 제외돼
+  전체 application 복구 증거는 없다.
+- 승인된 운영 RPO/RTO가 없다.
 - Storage를 사용한다면 DB backup과 별도의 backup/restore 절차가 필요하다.
 
 ## 검증 상태
 
-최근 로컬 검증 기준:
+현재 작업 트리는 다음 검증을 모두 다시 통과해야 한다.
 
-- Vitest: 31 files / 150 tests passed
-- lint: passed
-- typecheck: passed
-- Next.js production build: passed
-- production dependency audit: no known vulnerabilities
+- frozen lockfile install, lint, typecheck, unit/coverage/integration test
+- Next.js production build와 production dependency audit
+- 빈 local Supabase에서 17개 migration과 development seed replay
+- local DB lint, repository safety, secret scan
+- 일반 PR용 GitHub Actions CI와 승인형 Production validation workflow
+
+과거 test 개수와 배포 결과는 현재 hardening 변경의 최종 증거로 재사용하지 않는다.
 
 Production E2E는 별도 acknowledgement와 isolated test fixture를 사용한다. 실제
 운영 데이터나 실제 알림톡 수신을 검증하는 명령이 아니며, Production에서 실행할 때는
@@ -159,9 +190,9 @@ Production E2E는 별도 acknowledgement와 isolated test fixture를 사용한�
 - URL bearer token의 log 노출 위험
 - RLS/`SECURITY DEFINER` RPC와 service-role route의 지속적인 권한 감사 필요
 - raw answer, issue note, import staging, admin-test recipient 정보의 retention 정책 필요
-- 관리자 MFA, break-glass 복구, session revoke 정책 필요
-- GitHub Actions CI 없음
-- remote-only legacy migration source 복구 필요
+- 운영 관리자 TOTP QR 등록, break-glass 복구, session revoke 정책 필요
+- GitHub Actions 정의는 추가됐지만 이번 hardening PR의 실제 green 결과가 필요
+- 신규 pending migration 2개의 Production 적용과 Local/Remote 17/17 확인 필요
 
 ## 개발자 다음 단계
 
