@@ -14,10 +14,13 @@ import {
   createAdminClient,
   isSupabaseAdminConfigured,
 } from "@/lib/supabase/admin";
+import { needsAdminAal2 } from "@/lib/auth/mfa-policy";
 
 export const ADMIN_PERMISSIONS = [
   "CHECKIN_READ",
   "SAFETY_READ",
+  "CONTACT_READ",
+  "DATA_EXPORT",
   "CASE_WRITE",
 ] as const;
 
@@ -30,9 +33,26 @@ export type AdminContext = {
   email: string | null;
   permissions: AdminMembershipPermission[];
   isDevelopmentBypass: boolean;
+  mfa?: AdminMfaState;
 };
 
-type AdminFailure = "UNAUTHENTICATED" | "FORBIDDEN" | "MISCONFIGURED";
+export type AdminMfaState = {
+  currentLevel: "aal1" | "aal2" | null;
+  nextLevel: "aal1" | "aal2" | null;
+  enrolled: boolean;
+  enforcementEnabled: boolean;
+};
+
+type AdminFailure =
+  | "UNAUTHENTICATED"
+  | "FORBIDDEN"
+  | "MFA_REQUIRED"
+  | "MISCONFIGURED";
+
+type AdminResolutionOptions = {
+  includeMfa?: boolean;
+  requireAal2?: boolean;
+};
 
 type AdminResolution =
   | { context: AdminContext; failure: null }
@@ -50,6 +70,10 @@ export class AdminAuthorizationError extends Error {
       },
       FORBIDDEN: {
         message: "Administrator permission is required.",
+        status: 403 as const,
+      },
+      MFA_REQUIRED: {
+        message: "Administrator MFA verification is required.",
         status: 403 as const,
       },
       MISCONFIGURED: {
@@ -70,6 +94,17 @@ export function isDevelopmentAdminBypassEnabled(): boolean {
     process.env.NODE_ENV !== "production" &&
     process.env.ALLOW_DEV_ADMIN === "true"
   );
+}
+
+export function isAdminMfaEnforcementEnabled(): boolean {
+  return process.env.ADMIN_MFA_ENFORCEMENT_ENABLED === "true";
+}
+
+export function hasAdminPermission(
+  permissions: readonly AdminMembershipPermission[],
+  permission: AdminRequiredPermission,
+): boolean {
+  return permissions.includes("SUPER_ADMIN") || permissions.includes(permission);
 }
 
 function isAdminMembershipPermission(
@@ -124,7 +159,8 @@ async function provisionConfiguredMembership(user: {
 }
 
 async function resolveAdmin(
-  requiredPermission: AdminRequiredPermission,
+  requiredPermission: AdminRequiredPermission | null,
+  options: AdminResolutionOptions = {},
 ): Promise<AdminResolution> {
   if (isDevelopmentAdminBypassEnabled()) {
     return {
@@ -133,6 +169,14 @@ async function resolveAdmin(
         email: "development-admin@local.invalid",
         permissions: ["SUPER_ADMIN", ...ADMIN_PERMISSIONS],
         isDevelopmentBypass: true,
+        mfa: options.includeMfa || options.requireAal2
+          ? {
+              currentLevel: "aal2",
+              nextLevel: "aal2",
+              enrolled: true,
+              enforcementEnabled: false,
+            }
+          : undefined,
       },
       failure: null,
     };
@@ -183,7 +227,9 @@ async function resolveAdmin(
   if (
     !membership ||
     membership.is_active !== true ||
-    (!permissions.includes("SUPER_ADMIN") &&
+    permissions.length === 0 ||
+    (requiredPermission !== null &&
+      !permissions.includes("SUPER_ADMIN") &&
       !permissions.includes(requiredPermission))
   ) {
     return { context: null, failure: "FORBIDDEN" };
@@ -192,13 +238,51 @@ async function resolveAdmin(
   // This SECURITY DEFINER function is the authoritative DB permission check.
   // The local check above prevents an unnecessary RPC for inactive accounts;
   // neither client metadata nor ADMIN_EMAILS alone grants request access.
+  const databasePermission = requiredPermission ?? permissions[0];
+  if (!databasePermission) {
+    return { context: null, failure: "FORBIDDEN" };
+  }
   const { data: isAllowed, error: permissionError } = await supabase.rpc(
     "is_admin",
-    { required_permission: requiredPermission },
+    { required_permission: databasePermission },
   );
 
   if (permissionError || isAllowed !== true) {
     return { context: null, failure: "FORBIDDEN" };
+  }
+
+  let mfa: AdminMfaState | undefined;
+  if (options.includeMfa || options.requireAal2) {
+    const enrolled = Boolean(
+      user.factors?.some(
+        (factor) => factor.factor_type === "totp" && factor.status === "verified",
+      ),
+    );
+    const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const currentLevel = assurance.error
+      ? null
+      : (assurance.data.currentLevel as "aal1" | "aal2" | null);
+    const nextLevel = assurance.error
+      ? enrolled
+        ? "aal2"
+        : "aal1"
+      : (assurance.data.nextLevel as "aal1" | "aal2" | null);
+    mfa = {
+      currentLevel,
+      nextLevel,
+      enrolled: enrolled || nextLevel === "aal2",
+      enforcementEnabled: isAdminMfaEnforcementEnabled(),
+    };
+
+    // Existing administrators remain able to enroll while the rollout flag is
+    // disabled. Once a verified factor exists, sensitive operations always
+    // require a fresh AAL2 session even before global enforcement is enabled.
+    if (
+      options.requireAal2 &&
+      needsAdminAal2(mfa)
+    ) {
+      return { context: null, failure: "MFA_REQUIRED" };
+    }
   }
 
   return {
@@ -207,6 +291,7 @@ async function resolveAdmin(
       email: user.email ?? null,
       permissions,
       isDevelopmentBypass: false,
+      mfa,
     },
     failure: null,
   };
@@ -231,6 +316,36 @@ export async function requireAdmin(
     throw new AdminAuthorizationError(result.failure);
   }
 
+  return result.context;
+}
+
+export async function requireAdminWithMfa(
+  requiredPermission: AdminRequiredPermission = "CHECKIN_READ",
+): Promise<AdminContext> {
+  const result = await resolveAdmin(requiredPermission, { includeMfa: true });
+  if (!result.context) throw new AdminAuthorizationError(result.failure);
+  return result.context;
+}
+
+/**
+ * Session/enrollment guard for any active administrator. This avoids locking a
+ * least-privilege administrator out of MFA setup merely because they do not
+ * have CHECKIN_READ.
+ */
+export async function requireAnyAdminWithMfa(): Promise<AdminContext> {
+  const result = await resolveAdmin(null, { includeMfa: true });
+  if (!result.context) throw new AdminAuthorizationError(result.failure);
+  return result.context;
+}
+
+export async function requireAdminAal2(
+  requiredPermission: AdminRequiredPermission,
+): Promise<AdminContext> {
+  const result = await resolveAdmin(requiredPermission, {
+    includeMfa: true,
+    requireAal2: true,
+  });
+  if (!result.context) throw new AdminAuthorizationError(result.failure);
   return result.context;
 }
 
@@ -265,5 +380,40 @@ export async function requireAdminPage(
     searchParams.set("error", "configuration");
   }
 
+  redirect(`/admin/login?${searchParams.toString()}`);
+}
+
+export async function requireAnyAdminPage(
+  nextPath = "/admin/mfa",
+): Promise<AdminContext> {
+  const result = await resolveAdmin(null);
+  if (result.context) return result.context;
+
+  const searchParams = new URLSearchParams({ next: safeAdminPath(nextPath) });
+  if (result.failure === "FORBIDDEN") searchParams.set("error", "forbidden");
+  if (result.failure === "MISCONFIGURED") {
+    searchParams.set("error", "configuration");
+  }
+  redirect(`/admin/login?${searchParams.toString()}`);
+}
+
+export async function requireAdminAal2Page(
+  requiredPermission: AdminRequiredPermission,
+  nextPath: string,
+): Promise<AdminContext> {
+  const result = await resolveAdmin(requiredPermission, {
+    includeMfa: true,
+    requireAal2: true,
+  });
+
+  if (result.context) return result.context;
+  if (result.failure === "MFA_REQUIRED") {
+    const searchParams = new URLSearchParams({ next: safeAdminPath(nextPath) });
+    redirect(`/admin/mfa?${searchParams.toString()}`);
+  }
+
+  const searchParams = new URLSearchParams({ next: safeAdminPath(nextPath) });
+  if (result.failure === "FORBIDDEN") searchParams.set("error", "forbidden");
+  if (result.failure === "MISCONFIGURED") searchParams.set("error", "configuration");
   redirect(`/admin/login?${searchParams.toString()}`);
 }

@@ -6,12 +6,16 @@ import {
   logSanitizedApiError,
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
-import { requireAdmin } from "@/lib/auth/admin";
+import {
+  AdminAuthorizationError,
+  hasAdminPermission,
+  requireAdminAal2,
+} from "@/lib/auth/admin";
 import { isCsvDataset, parseCsvExportFilters } from "@/lib/admin/csv";
 import {
   createCsvExport,
   recordCsvExportAudit,
-  requiredPermissionForCsv,
+  requiredPermissionsForCsv,
 } from "@/lib/admin/exports";
 
 export const runtime = "nodejs";
@@ -29,7 +33,15 @@ export async function GET(
   }
 
   try {
-    const admin = await requireAdmin(requiredPermissionForCsv(dataset));
+    const requiredPermissions = requiredPermissionsForCsv(dataset);
+    const admin = await requireAdminAal2(requiredPermissions[0]);
+    if (
+      !requiredPermissions.every((permission) =>
+        hasAdminPermission(admin.permissions, permission),
+      )
+    ) {
+      throw new AdminAuthorizationError("FORBIDDEN");
+    }
     if (!admin.userId) {
       return publicErrorResponse(
         context,

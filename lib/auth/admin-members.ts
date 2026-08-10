@@ -29,6 +29,8 @@ function normalizePermissions(value: unknown): AdminMembershipPermission[] {
     (permission): permission is AdminMembershipPermission =>
       permission === "CHECKIN_READ" ||
       permission === "SAFETY_READ" ||
+      permission === "CONTACT_READ" ||
+      permission === "DATA_EXPORT" ||
       permission === "CASE_WRITE" ||
       permission === "SUPER_ADMIN",
   );

@@ -60,7 +60,10 @@ async function reconcileUnknown(
   candidate: DispatchCandidate,
   provider: MessagingProvider,
 ): Promise<MessagingResult | null> {
-  if (candidate.failureClass !== "UNKNOWN") return null;
+  // A provider reference means the provider may already have accepted the
+  // request, even when the transport classified the attempt as transient.
+  // Reconcile first and never blindly resend a referenced provider request.
+  if (candidate.failureClass !== "UNKNOWN" && !candidate.providerMessageId) return null;
   let status;
   try {
     status = await provider.getStatus({
@@ -76,7 +79,7 @@ async function reconcileUnknown(
       failureClass: "UNKNOWN" as const,
     };
   }
-  if (status.status === "DELIVERED") {
+  if (["ACCEPTED", "SENT", "DELIVERED"].includes(status.status)) {
     return { ...status, success: true };
   }
   if (status.status === "FAILED") {
@@ -102,7 +105,7 @@ async function reconcileUnknown(
     ...status,
     success: false,
     errorCode:
-      status.status === "PENDING"
+      status.status === "ACCEPTED" || status.status === "SENT"
         ? "PROVIDER_DELIVERY_PENDING"
         : status.errorCode ?? "PROVIDER_DELIVERY_UNKNOWN",
     failureClass: "UNKNOWN",

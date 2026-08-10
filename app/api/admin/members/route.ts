@@ -10,7 +10,7 @@ import {
   publicErrorResponse,
   type RequestContext,
 } from "@/app/api/_shared/responses";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireAdminAal2 } from "@/lib/auth/admin";
 import { getAdminEmailConfigurationSummary } from "@/lib/auth/admin-config";
 import {
   findVerifiedAuthUserByEmail,
@@ -24,13 +24,15 @@ export const dynamic = "force-dynamic";
 const permissionSchema = z.enum([
   "CHECKIN_READ",
   "SAFETY_READ",
+  "CONTACT_READ",
+  "DATA_EXPORT",
   "CASE_WRITE",
   "SUPER_ADMIN",
 ]);
 
 const addAdminSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  permissions: z.array(permissionSchema).min(1).max(4).transform((items) => [...new Set(items)]),
+  permissions: z.array(permissionSchema).min(1).max(6).transform((items) => [...new Set(items)]),
 });
 
 function isAllowedOrigin(request: Request): boolean {
@@ -68,7 +70,7 @@ function errorResponse(context: RequestContext, error: unknown) {
 export async function GET() {
   const context = createRequestContext({ pragma: "no-cache" });
   try {
-    await requireAdmin("SUPER_ADMIN");
+    await requireAdminAal2("SUPER_ADMIN");
     const members = await listAdminMembers();
     const emailConfiguration = getAdminEmailConfigurationSummary();
     return jsonResponse(context, {
@@ -91,7 +93,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const admin = await requireAdmin("SUPER_ADMIN");
+    const admin = await requireAdminAal2("SUPER_ADMIN");
     if (!admin.userId) {
       return publicErrorResponse(
         context,

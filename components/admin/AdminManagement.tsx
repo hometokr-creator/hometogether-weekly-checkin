@@ -8,6 +8,8 @@ import type { AdminMember } from "@/lib/auth/admin-members";
 const permissions = [
   ["CHECKIN_READ", "체크인 조회"],
   ["SAFETY_READ", "안전 응답 조회"],
+  ["CONTACT_READ", "원문 연락처 접근"],
+  ["DATA_EXPORT", "민감 CSV 내보내기"],
   ["CASE_WRITE", "지원 사건 변경"],
   ["SUPER_ADMIN", "최고 관리자"],
 ] as const;

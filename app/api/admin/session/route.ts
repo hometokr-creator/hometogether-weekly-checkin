@@ -7,7 +7,7 @@ import {
   logSanitizedApiError,
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireAnyAdminWithMfa } from "@/lib/auth/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +24,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const admin = await requireAdmin("CHECKIN_READ");
+    const admin = await requireAnyAdminWithMfa();
     return jsonResponse(context, {
       ok: true,
       permissions: admin.permissions,
+      mfa: admin.mfa,
     });
   } catch (error) {
     const authorizationResponse = adminAuthorizationErrorResponse(context, error);

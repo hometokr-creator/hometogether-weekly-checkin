@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -68,107 +88,6 @@ export type Database = {
           permissions?: string[]
           updated_at?: string
           user_id?: string
-        }
-        Relationships: []
-      }
-      app_files: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          entity: string
-          field_name: string
-          file_name: string
-          id: string
-          mime_type: string
-          record_id: string
-          size: number
-          storage_path: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          entity: string
-          field_name: string
-          file_name: string
-          id?: string
-          mime_type?: string
-          record_id: string
-          size?: number
-          storage_path: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          entity?: string
-          field_name?: string
-          file_name?: string
-          id?: string
-          mime_type?: string
-          record_id?: string
-          size?: number
-          storage_path?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "app_files_record_id_fkey"
-            columns: ["record_id"]
-            isOneToOne: false
-            referencedRelation: "app_records"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      app_members: {
-        Row: {
-          created_at: string
-          email: string
-          role: string
-          status: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          role?: string
-          status?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          role?: string
-          status?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      app_records: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          data: Json
-          entity: string
-          id: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          data?: Json
-          entity: string
-          id?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          data?: Json
-          entity?: string
-          id?: string
-          updated_at?: string
-          updated_by?: string | null
         }
         Relationships: []
       }
@@ -685,11 +604,64 @@ export type Database = {
           },
         ]
       }
+      message_delivery_receipts: {
+        Row: {
+          delivery_status: string
+          error_code: string | null
+          id: string
+          message_log_id: string | null
+          occurred_at: string | null
+          payload_sha256: string
+          provider: string
+          provider_event_id: string
+          provider_message_id: string
+          received_at: string
+          signature_timestamp: string
+        }
+        Insert: {
+          delivery_status: string
+          error_code?: string | null
+          id?: string
+          message_log_id?: string | null
+          occurred_at?: string | null
+          payload_sha256: string
+          provider: string
+          provider_event_id: string
+          provider_message_id: string
+          received_at?: string
+          signature_timestamp: string
+        }
+        Update: {
+          delivery_status?: string
+          error_code?: string | null
+          id?: string
+          message_log_id?: string | null
+          occurred_at?: string | null
+          payload_sha256?: string
+          provider?: string
+          provider_event_id?: string
+          provider_message_id?: string
+          received_at?: string
+          signature_timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_delivery_receipts_message_log_id_fkey"
+            columns: ["message_log_id"]
+            isOneToOne: false
+            referencedRelation: "message_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_logs: {
         Row: {
+          accepted_at: string | null
           attempt_count: number
           created_at: string
+          delivered_at: string | null
           delivery_scope: string
+          delivery_status: string
           error_code: string | null
           error_message_sanitized: string | null
           failure_class: string | null
@@ -697,6 +669,7 @@ export type Database = {
           idempotency_key: string
           invitation_id: string | null
           is_test: boolean
+          last_delivery_receipt_at: string | null
           lease_owner: string | null
           lease_until: string | null
           max_attempts: number
@@ -714,9 +687,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          accepted_at?: string | null
           attempt_count?: number
           created_at?: string
+          delivered_at?: string | null
           delivery_scope?: string
+          delivery_status?: string
           error_code?: string | null
           error_message_sanitized?: string | null
           failure_class?: string | null
@@ -724,6 +700,7 @@ export type Database = {
           idempotency_key: string
           invitation_id?: string | null
           is_test?: boolean
+          last_delivery_receipt_at?: string | null
           lease_owner?: string | null
           lease_until?: string | null
           max_attempts?: number
@@ -741,9 +718,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          accepted_at?: string | null
           attempt_count?: number
           created_at?: string
+          delivered_at?: string | null
           delivery_scope?: string
+          delivery_status?: string
           error_code?: string | null
           error_message_sanitized?: string | null
           failure_class?: string | null
@@ -751,6 +731,7 @@ export type Database = {
           idempotency_key?: string
           invitation_id?: string | null
           is_test?: boolean
+          last_delivery_receipt_at?: string | null
           lease_owner?: string | null
           lease_until?: string | null
           max_attempts?: number
@@ -1612,6 +1593,24 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      apply_message_delivery_receipt: {
+        Args: {
+          p_delivery_status: string
+          p_error_code?: string
+          p_occurred_at?: string
+          p_payload_sha256?: string
+          p_provider: string
+          p_provider_event_id: string
+          p_provider_message_id: string
+          p_signature_timestamp?: string
+        }
+        Returns: {
+          delivery_status: string
+          duplicate: boolean
+          matched: boolean
+          message_log_id: string
+        }[]
+      }
       apply_operational_data_import: {
         Args: {
           p_admin_id: string
@@ -1644,7 +1643,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      can_edit_app: { Args: { check_user_id: string }; Returns: boolean }
       claim_message_deliveries: {
         Args: {
           p_allow_admin_test?: boolean
@@ -1726,9 +1724,12 @@ export type Database = {
           p_success: boolean
         }
         Returns: {
+          accepted_at: string | null
           attempt_count: number
           created_at: string
+          delivered_at: string | null
           delivery_scope: string
+          delivery_status: string
           error_code: string | null
           error_message_sanitized: string | null
           failure_class: string | null
@@ -1736,6 +1737,7 @@ export type Database = {
           idempotency_key: string
           invitation_id: string | null
           is_test: boolean
+          last_delivery_receipt_at: string | null
           lease_owner: string | null
           lease_until: string | null
           max_attempts: number
@@ -1875,9 +1877,12 @@ export type Database = {
           p_template_variables: Json
         }
         Returns: {
+          accepted_at: string | null
           attempt_count: number
           created_at: string
+          delivered_at: string | null
           delivery_scope: string
+          delivery_status: string
           error_code: string | null
           error_message_sanitized: string | null
           failure_class: string | null
@@ -1885,6 +1890,7 @@ export type Database = {
           idempotency_key: string
           invitation_id: string | null
           is_test: boolean
+          last_delivery_receipt_at: string | null
           lease_owner: string | null
           lease_until: string | null
           max_attempts: number
@@ -1921,11 +1927,18 @@ export type Database = {
         Args: { p_role: string; p_state: Json; p_token: string }
         Returns: Json
       }
+      hometogether_update_session_guarded: {
+        Args: { p_role: string; p_state: Json; p_token: string }
+        Returns: Json
+      }
       is_admin: { Args: { required_permission?: string }; Returns: boolean }
-      is_app_member: { Args: { check_user_id: string }; Returns: boolean }
       is_weekly_invitation_currently_eligible: {
         Args: { p_at: string; p_invitation_id: string }
         Returns: boolean
+      }
+      message_delivery_next_status: {
+        Args: { p_current: string; p_incoming: string }
+        Returns: string
       }
       provision_configured_admin: {
         Args: {
@@ -2169,6 +2182,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

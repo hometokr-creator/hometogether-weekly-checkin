@@ -8,6 +8,11 @@ import {
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
 import {
+  hasOversizedDeclaredBody,
+  readLimitedJson,
+  RequestBodyTooLargeError,
+} from "@/app/api/_shared/request-body";
+import {
   importFieldNames,
   type ImportColumnMapping,
 } from "@/lib/imports/contracts";
@@ -23,6 +28,7 @@ const requestSchema = z.object({
   csv: z.string().min(1).max(2_000_000),
   mapping: z.record(z.string(), z.string().max(255)),
 });
+const MAX_IMPORT_REQUEST_BYTES = 2_500_000;
 
 function isAllowedOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
@@ -40,14 +46,21 @@ export async function POST(request: Request) {
   if (!isAllowedOrigin(request)) {
     return publicErrorResponse(context, "INVALID_ORIGIN", "허용되지 않은 요청입니다.", 403);
   }
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 2_500_000) {
+  if (hasOversizedDeclaredBody(request, MAX_IMPORT_REQUEST_BYTES)) {
     return publicErrorResponse(context, "PAYLOAD_TOO_LARGE", "CSV 파일은 2MB 이하여야 합니다.", 413);
   }
-
   try {
     await requireImportSuperAdmin();
-    const parsed = requestSchema.safeParse(await request.json());
+    let raw: unknown;
+    try {
+      raw = await readLimitedJson(request, MAX_IMPORT_REQUEST_BYTES);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return publicErrorResponse(context, "PAYLOAD_TOO_LARGE", "CSV 파일은 2MB 이하여야 합니다.", 413);
+      }
+      return publicErrorResponse(context, "INVALID_BODY", "CSV와 컬럼 연결을 확인해 주세요.", 400);
+    }
+    const parsed = requestSchema.safeParse(raw);
     if (!parsed.success) {
       return publicErrorResponse(context, "INVALID_BODY", "CSV와 컬럼 연결을 확인해 주세요.", 400);
     }

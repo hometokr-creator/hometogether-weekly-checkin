@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
 import { MockMessagingProvider } from "@/lib/messaging/mock-provider";
+import {
+  KakaoAlimtalkProvider,
+  normalizeProviderDeliveryStatus,
+} from "@/lib/messaging/kakao-alimtalk-provider";
 import {
   classifyHttpFailure,
   maskPhone,
@@ -98,5 +103,117 @@ describe("messaging", () => {
     expect(retryDelayMs(4)).toBe(8 * 60 * 60 * 1000);
     expect(retryDelayMs(5)).toBe(8 * 60 * 60 * 1000);
     expect(retryDelayMs(1, 120)).toBe(120 * 1000);
+  });
+
+  it("normalizes provider lifecycle states without treating acceptance as delivery", () => {
+    expect(normalizeProviderDeliveryStatus("accepted")).toBe("ACCEPTED");
+    expect(normalizeProviderDeliveryStatus("sent")).toBe("SENT");
+    expect(normalizeProviderDeliveryStatus("success")).toBe("DELIVERED");
+    expect(normalizeProviderDeliveryStatus("failed")).toBe("FAILED");
+    expect(normalizeProviderDeliveryStatus("unexpected")).toBe("UNKNOWN");
+  });
+
+  it("verifies timestamp-bound callbacks and returns idempotency metadata", async () => {
+    const callbackSecret = "fixture-callback-secret-32-bytes-long";
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const rawBody = JSON.stringify({
+      eventId: "event-fixture-0001",
+      messageId: "provider-message-1",
+      status: "delivered",
+      occurredAt: "2026-08-09T09:00:00+09:00",
+    });
+    const signature = `sha256=${createHmac("sha256", callbackSecret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex")}`;
+    const provider = new KakaoAlimtalkProvider({
+      baseUrl: "https://relay.example.test",
+      apiKey: "fixture-key",
+      apiSecret: "fixture-secret",
+      senderProfile: "fixture-sender",
+      templateCode: "fixture-template",
+      callbackSecret,
+    });
+    const result = await provider.verifyCallback({
+      rawBody,
+      headers: new Headers({
+        "x-alimtalk-timestamp": timestamp,
+        "x-alimtalk-signature": signature,
+        "x-alimtalk-event-id": "event-fixture-0001",
+      }),
+    });
+    expect(result).toMatchObject({
+      valid: true,
+      providerEventId: "event-fixture-0001",
+      providerMessageId: "provider-message-1",
+      status: "DELIVERED",
+    });
+  });
+
+  it("rejects a correctly signed callback outside the replay window", async () => {
+    const callbackSecret = "fixture-callback-secret-32-bytes-long";
+    const timestamp = String(Math.floor(Date.now() / 1000) - 301);
+    const rawBody = JSON.stringify({
+      eventId: "event-fixture-0002",
+      messageId: "provider-message-2",
+      status: "delivered",
+    });
+    const signature = `sha256=${createHmac("sha256", callbackSecret)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex")}`;
+    const provider = new KakaoAlimtalkProvider({
+      baseUrl: "https://relay.example.test",
+      apiKey: "fixture-key",
+      apiSecret: "fixture-secret",
+      senderProfile: "fixture-sender",
+      templateCode: "fixture-template",
+      callbackSecret,
+    });
+    await expect(provider.verifyCallback({
+      rawBody,
+      headers: new Headers({
+        "x-alimtalk-timestamp": timestamp,
+        "x-alimtalk-signature": signature,
+      }),
+    })).resolves.toMatchObject({
+      valid: false,
+      errorCode: "STALE_CALLBACK_TIMESTAMP",
+    });
+  });
+
+  it("rejects a callback body that differs from the signed bytes", async () => {
+    const callbackSecret = "fixture-callback-secret-32-bytes-long";
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signedBody = JSON.stringify({
+      eventId: "event-fixture-0003",
+      messageId: "provider-message-3",
+      status: "accepted",
+    });
+    const alteredBody = JSON.stringify({
+      eventId: "event-fixture-0003",
+      messageId: "provider-message-3",
+      status: "delivered",
+    });
+    const signature = `sha256=${createHmac("sha256", callbackSecret)
+      .update(`${timestamp}.${signedBody}`)
+      .digest("hex")}`;
+    const provider = new KakaoAlimtalkProvider({
+      baseUrl: "https://relay.example.test",
+      apiKey: "fixture-key",
+      apiSecret: "fixture-secret",
+      senderProfile: "fixture-sender",
+      templateCode: "fixture-template",
+      callbackSecret,
+    });
+
+    await expect(provider.verifyCallback({
+      rawBody: alteredBody,
+      headers: new Headers({
+        "x-alimtalk-timestamp": timestamp,
+        "x-alimtalk-signature": signature,
+      }),
+    })).resolves.toMatchObject({
+      valid: false,
+      errorCode: "INVALID_CALLBACK_SIGNATURE",
+    });
   });
 });

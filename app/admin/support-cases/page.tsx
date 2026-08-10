@@ -16,6 +16,7 @@ import {
   shortId,
 } from "@/components/admin/admin-labels";
 import { requireAdminPage } from "@/lib/auth/admin";
+import { minimizeDashboard } from "@/lib/admin/privacy";
 import { getCheckinRepository } from "@/lib/checkin/repository-factory";
 import type {
   RiskLevel,
@@ -77,7 +78,10 @@ export default async function AdminSupportCasesPage({
   const returnPath = `/admin/support-cases${returnParams.size ? `?${returnParams}` : ""}`;
   const admin = await requireAdminPage("SAFETY_READ", returnPath);
   const canWriteCases = hasPermission(admin.permissions, "CASE_WRITE");
-  const dashboard = await (await getCheckinRepository()).getDashboard();
+  const dashboard = minimizeDashboard(
+    await (await getCheckinRepository()).getDashboard(),
+    admin.permissions,
+  );
   const responseById = new Map(dashboard.responses.map((response) => [response.id, response]));
   const visibleCases = dashboard.supportCases.filter((supportCase) => {
     const response = responseById.get(supportCase.responseId);

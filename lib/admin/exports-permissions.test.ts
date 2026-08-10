@@ -1,14 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { requiredPermissionForCsv } from "@/lib/admin/exports";
+import { requiredPermissionsForCsv } from "@/lib/admin/exports";
 
 describe("CSV export permissions", () => {
   it("requires SUPER_ADMIN for notification outbox metadata", () => {
-    expect(requiredPermissionForCsv("notification-outbox")).toBe("SUPER_ADMIN");
+    expect(requiredPermissionsForCsv("notification-outbox")).toEqual([
+      "SUPER_ADMIN",
+    ]);
   });
 
-  it("keeps safety response exports behind SAFETY_READ", () => {
-    expect(requiredPermissionForCsv("checkin-responses")).toBe("SAFETY_READ");
-    expect(requiredPermissionForCsv("issues")).toBe("SAFETY_READ");
+  it("requires both export and safety access for raw response-bearing exports", () => {
+    expect(requiredPermissionsForCsv("weekly-checkins")).toEqual([
+      "DATA_EXPORT",
+    ]);
+    expect(requiredPermissionsForCsv("checkin-responses")).toEqual([
+      "DATA_EXPORT",
+      "SAFETY_READ",
+    ]);
+    expect(requiredPermissionsForCsv("issues")).toEqual([
+      "DATA_EXPORT",
+      "SAFETY_READ",
+    ]);
   });
 });

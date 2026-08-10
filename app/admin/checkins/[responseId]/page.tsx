@@ -10,7 +10,15 @@ import {
 } from "@/components/admin/AdminPrimitives";
 import { ResponseDetailSections } from "@/components/admin/ResponseDetailSections";
 import { formatKoreanDateTime, roleLabels } from "@/components/admin/admin-labels";
-import { requireAdminPage } from "@/lib/auth/admin";
+import {
+  requireAdminPage,
+  requireAnyAdminPage,
+} from "@/lib/auth/admin";
+import {
+  minimizeDashboard,
+  minimizeDashboardResponse,
+} from "@/lib/admin/privacy";
+import { classifyResponseAccess } from "@/lib/admin/response-access";
 import { getCheckinRepository } from "@/lib/checkin/repository-factory";
 import type { DashboardResponseRow } from "@/lib/checkin/types";
 
@@ -36,17 +44,23 @@ export default async function AdminCheckinResponsePage({
 }) {
   const { responseId } = await params;
   const returnPath = `/admin/checkins/${encodeURIComponent(responseId)}`;
-  let admin = await requireAdminPage("CHECKIN_READ", returnPath);
+  await requireAnyAdminPage(returnPath);
+  const access = await classifyResponseAccess(responseId);
+  if (access === "MISSING") notFound();
+  const admin = await requireAdminPage(
+    access === "SAFETY" ? "SAFETY_READ" : "CHECKIN_READ",
+    returnPath,
+  );
   const repository = await getCheckinRepository();
-  const response = await repository.getResponse(responseId);
+  const rawResponse = await repository.getResponse(responseId);
 
-  if (!response) notFound();
+  if (!rawResponse) notFound();
 
-  if (isSafetySensitive(response) && !hasPermission(admin.permissions, "SAFETY_READ")) {
-    admin = await requireAdminPage("SAFETY_READ", returnPath);
-  }
-
-  const dashboard = await repository.getDashboard();
+  const response = minimizeDashboardResponse(rawResponse, admin.permissions);
+  const dashboard = minimizeDashboard(
+    await repository.getDashboard(),
+    admin.permissions,
+  );
   const canReadSafety = hasPermission(admin.permissions, "SAFETY_READ");
   const authorizedRelatedResponses = canReadSafety
     ? dashboard.responses

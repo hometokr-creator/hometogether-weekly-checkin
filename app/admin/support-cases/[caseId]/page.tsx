@@ -14,6 +14,10 @@ import {
 import { ResponseDetailSections } from "@/components/admin/ResponseDetailSections";
 import { formatKoreanDateTime } from "@/components/admin/admin-labels";
 import { requireAdminPage } from "@/lib/auth/admin";
+import {
+  minimizeDashboard,
+  minimizeDashboardResponse,
+} from "@/lib/admin/privacy";
 import { getCheckinRepository } from "@/lib/checkin/repository-factory";
 
 export const dynamic = "force-dynamic";
@@ -35,10 +39,14 @@ export default async function AdminSupportCasePage({
 
   if (!supportCase) notFound();
 
-  const [response, dashboard] = await Promise.all([
+  const [rawResponse, rawDashboard] = await Promise.all([
     repository.getResponse(supportCase.responseId),
     repository.getDashboard(),
   ]);
+  const response = rawResponse
+    ? minimizeDashboardResponse(rawResponse, admin.permissions)
+    : null;
+  const dashboard = minimizeDashboard(rawDashboard, admin.permissions);
   const previousResponses = response
     ? dashboard.responses
         .filter(

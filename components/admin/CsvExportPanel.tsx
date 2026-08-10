@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 
+import type { CsvDataset } from "@/lib/admin/csv";
+
 const exports = [
   ["profiles", "전체 Profiles", "개인정보 포함 · 최고 관리자"],
   ["hosts", "Hosts", "집주인 Profiles"],
@@ -16,7 +18,11 @@ const exports = [
   ["notification-outbox", "Notification Outbox", "전화번호 원문 제외"],
 ] as const;
 
-export function CsvExportPanel() {
+export function CsvExportPanel({
+  allowedDatasets,
+}: {
+  allowedDatasets: readonly CsvDataset[];
+}) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const query = useMemo(() => {
@@ -39,7 +45,7 @@ export function CsvExportPanel() {
         </label>
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {exports.map(([dataset, title, detail]) => (
+        {exports.filter(([dataset]) => allowedDatasets.includes(dataset)).map(([dataset, title, detail]) => (
           <article key={dataset} className="flex flex-col rounded-2xl border border-[#dce5e1] bg-white p-5">
             <h2 className="m-0 text-lg font-black">{title}</h2>
             <p className="mb-5 mt-2 flex-1 text-sm leading-6 text-[#60706a]">{detail}</p>

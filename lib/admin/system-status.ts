@@ -7,6 +7,7 @@ import {
   type EligibilityResult,
 } from "@/lib/checkin/eligibility";
 import { getMessagingConfigurationStatus } from "@/lib/messaging/config";
+import { isAdminMfaEnforcementEnabled } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type JsonRow = Record<string, unknown>;
@@ -34,6 +35,7 @@ export type AdminSystemStatus = {
     recentFailed: number;
     lastSentAt?: string;
     lastFailedAt?: string;
+    delivery: Record<"ACCEPTED" | "SENT" | "DELIVERED" | "FAILED" | "UNKNOWN", number>;
   };
   outbox: {
     pending: number;
@@ -53,6 +55,7 @@ export type AdminSystemStatus = {
     activeCount: number;
     allowlistCount: number;
     allowlistValid: boolean;
+    mfaEnforcementEnabled: boolean;
   };
   backup: {
     plan: string;
@@ -266,7 +269,7 @@ export async function getAdminSystemStatus(adminId: string): Promise<AdminSystem
     rows(
       supabase
         .from("message_logs")
-        .select("status,provider,sent_at,created_at,next_attempt_at,delivery_scope")
+        .select("status,delivery_status,provider,sent_at,created_at,next_attempt_at,delivery_scope")
         .order("created_at", { ascending: false })
         .limit(5000),
     ),
@@ -312,6 +315,17 @@ export async function getAdminSystemStatus(adminId: string): Promise<AdminSystem
   );
   const sentMessages = providerMessages.filter((row) => row.status === "SENT");
   const failedMessages = providerMessages.filter((row) => row.status === "FAILED");
+  const delivery = {
+    ACCEPTED: providerMessages.filter((row) => row.delivery_status === "ACCEPTED").length,
+    SENT: providerMessages.filter((row) => row.delivery_status === "SENT").length,
+    DELIVERED: providerMessages.filter((row) => row.delivery_status === "DELIVERED").length,
+    FAILED: providerMessages.filter((row) => row.delivery_status === "FAILED").length,
+    UNKNOWN: providerMessages.filter((row) =>
+      !["ACCEPTED", "SENT", "DELIVERED", "FAILED"].includes(
+        String(row.delivery_status ?? "UNKNOWN"),
+      ),
+    ).length,
+  };
   const dueMessages = productionMessages.filter(
     (row) =>
       ["PENDING", "RETRYABLE"].includes(String(row.status ?? "")) &&
@@ -357,6 +371,7 @@ export async function getAdminSystemStatus(adminId: string): Promise<AdminSystem
       ...messaging,
       recentSent: sentMessages.length,
       recentFailed: failedMessages.length,
+      delivery,
       lastSentAt:
         sentMessages.find((row) => typeof row.sent_at === "string")?.sent_at as
           | string
@@ -388,6 +403,7 @@ export async function getAdminSystemStatus(adminId: string): Promise<AdminSystem
       activeCount: activeAdmins,
       allowlistCount: adminEmails.count,
       allowlistValid: adminEmails.valid,
+      mfaEnforcementEnabled: isAdminMfaEnforcementEnabled(),
     },
     backup: {
       plan: process.env.SUPABASE_PLAN?.trim() || "UNKNOWN",

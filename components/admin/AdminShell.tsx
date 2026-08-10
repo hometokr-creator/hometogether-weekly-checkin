@@ -6,6 +6,7 @@ import {
   Database,
   HeartHandshake,
   Home,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -70,6 +71,10 @@ export function AdminShell({
             <Link className={navClass(active === "admins")} href="/admin/admins">
               <Users size={17} aria-hidden="true" />
               관리자
+            </Link>
+            <Link className={navClass(false)} href="/admin/mfa">
+              <ShieldCheck size={17} aria-hidden="true" />
+              MFA
             </Link>
             <Link className={navClass(false)} href="/">
               <Home size={17} aria-hidden="true" />

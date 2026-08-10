@@ -3,12 +3,22 @@ import { Upload } from "lucide-react";
 
 import { CsvExportPanel } from "@/components/admin/CsvExportPanel";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { requireAdminPage } from "@/lib/auth/admin";
+import {
+  hasAdminPermission,
+  requireAdminAal2Page,
+} from "@/lib/auth/admin";
+import { csvDatasets } from "@/lib/admin/csv";
+import { requiredPermissionsForCsv } from "@/lib/admin/exports";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDataPage() {
-  await requireAdminPage("SUPER_ADMIN", "/admin/data");
+  const admin = await requireAdminAal2Page("DATA_EXPORT", "/admin/data");
+  const allowedDatasets = csvDatasets.filter((dataset) =>
+    requiredPermissionsForCsv(dataset).every((permission) =>
+      hasAdminPermission(admin.permissions, permission),
+    ),
+  );
   return (
     <AdminShell
       active="data"
@@ -27,7 +37,7 @@ export default async function AdminDataPage() {
       <aside className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
         Profiles와 응답 CSV에는 개인정보가 포함될 수 있습니다. 업무상 필요한 최소 기간만 내려받고 승인된 저장 위치에서만 보관하세요.
       </aside>
-      <CsvExportPanel />
+      <CsvExportPanel allowedDatasets={allowedDatasets} />
     </AdminShell>
   );
 }

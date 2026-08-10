@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+          run_install: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Reject forbidden tracked files
+        run: pnpm repository:safety
+
+      - name: Validate migration files
+        run: pnpm migrations:validate
+
+      - name: Reject edits to existing migrations in pull requests
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r status path; do
+            [ -z "${status}" ] && continue
+            case "${status}" in
+              A*) ;;
+              *)
+                echo "Existing migration must remain immutable: ${path} (${status})" >&2
+                exit 1
+                ;;
+            esac
+          done < <(git diff --name-status "${BASE_SHA}...HEAD" -- supabase/migrations)
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and repository tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan Git history with redacted findings
+        run: >-
+          docker run --rm
+          -v "${GITHUB_WORKSPACE}:/repo"
+          ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo
+          --gitleaks-ignore-path=/repo/.gitleaksignore
+          --redact --no-banner --exit-code=1
+
+  local-supabase:
+    name: Local Supabase migration replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.113.0
+
+      - name: Start isolated local Supabase
+        run: supabase start --exclude studio,imgproxy,edge-runtime,logflare,vector
+
+      - name: Replay all migrations and development seed
+        run: supabase db reset --local
+
+      - name: Lint local database schema
+        run: supabase db lint --local --fail-on error
+
+      - name: Verify admin privacy RLS at runtime
+        run: supabase test db --local supabase/tests/admin_privacy_rls.sql
+
+      - name: Stop isolated local Supabase
+        if: always()
+        run: supabase stop --no-backup

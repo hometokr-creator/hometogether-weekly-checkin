@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   ANONYMOUS_RLS_TARGETS,
+  ORDINARY_PARTICIPANT_RLS_TARGETS,
   assertRedValidationIsSafe,
   getProductionConfiguration,
   PRODUCTION_RED_ACK,
   redactValidationSecrets,
+  verifiedBoundaryVisibleRows,
 } from "@/scripts/production-validation/lib";
 
 const originalEnvironment = { ...process.env };
@@ -60,5 +62,36 @@ describe("production validation safety rails", () => {
       column: "id",
       requireGrantDenied: true,
     });
+    expect(
+      ANONYMOUS_RLS_TARGETS.find(
+        (target) => target.table === "message_delivery_receipts",
+      ),
+    ).toMatchObject({ column: "id", requireGrantDenied: true });
+  });
+
+  it("requires the ordinary participant receipt grant to remain revoked", () => {
+    expect(
+      ORDINARY_PARTICIPANT_RLS_TARGETS.find(
+        (target) => target.table === "message_delivery_receipts",
+      ),
+    ).toMatchObject({ column: "id", requireGrantDenied: true });
+    expect(
+      verifiedBoundaryVisibleRows({
+        table: "message_delivery_receipts",
+        requireGrantDenied: true,
+        data: null,
+        error: { code: "42501" },
+        roleLabel: "일반 참가자",
+      }),
+    ).toBe(0);
+    expect(() =>
+      verifiedBoundaryVisibleRows({
+        table: "message_delivery_receipts",
+        requireGrantDenied: true,
+        data: [],
+        error: null,
+        roleLabel: "일반 참가자",
+      }),
+    ).toThrow(/SELECT grant/);
   });
 });

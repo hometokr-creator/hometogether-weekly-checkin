@@ -9,7 +9,7 @@ import {
   logSanitizedApiError,
   publicErrorResponse,
 } from "@/app/api/_shared/responses";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireAdminAal2 } from "@/lib/auth/admin";
 import { setAdminMembership } from "@/lib/auth/admin-members";
 
 export const runtime = "nodejs";
@@ -17,9 +17,16 @@ export const dynamic = "force-dynamic";
 
 const updateSchema = z.object({
   permissions: z
-    .array(z.enum(["CHECKIN_READ", "SAFETY_READ", "CASE_WRITE", "SUPER_ADMIN"]))
+    .array(z.enum([
+      "CHECKIN_READ",
+      "SAFETY_READ",
+      "CONTACT_READ",
+      "DATA_EXPORT",
+      "CASE_WRITE",
+      "SUPER_ADMIN",
+    ]))
     .min(1)
-    .max(4)
+    .max(6)
     .transform((items) => [...new Set(items)]),
   isActive: z.boolean(),
   reason: z.string().trim().min(1).max(500).optional(),
@@ -43,7 +50,7 @@ export async function PATCH(
   }
 
   try {
-    const admin = await requireAdmin("SUPER_ADMIN");
+    const admin = await requireAdminAal2("SUPER_ADMIN");
     if (!admin.userId) {
       return publicErrorResponse(
         context,

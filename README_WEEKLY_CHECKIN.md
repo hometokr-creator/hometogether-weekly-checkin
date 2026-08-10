@@ -1,8 +1,12 @@
 # 공동생활 주간 체크인 운영 가이드
 
-현재 판정: **일부 미완료 — 웹·원격 DB·도메인·Cron·관리자 운영도구·CSV·E2E
-배포는 완료했고, 실제 알림톡 자격증명/수신 검증·영구 운영 관리자·실제 계약 데이터·
-managed backup/PITR·Vercel Pro 10분 Cron은 외부 설정을 기다리고 있습니다.**
+현재 판정: **Production hardening 진행 중 — 웹·원격 DB·도메인·Cron·관리자
+운영도구는 배포돼 있고 영구 `SUPER_ADMIN` 1명도 생성됐습니다. 실제 알림톡 발송은
+비활성 상태이며, 사업자 자격증명·실제 수신/callback 검증·승인 고객 데이터·관리자
+TOTP 등록·managed backup/PITR는 외부 운영 준비가 필요합니다. 현재 작업 트리에는
+원격 적용 migration 15개의 source와 신규 additive migration 2개가 있으며, 신규
+migration의 Production 적용과 최종 배포 전에는 이 문서를 배포 완료 증거로 사용하지
+않습니다.**
 
 ## 현재 Production 현황 (2026-08-09 KST)
 
@@ -12,22 +16,23 @@ managed backup/PITR·Vercel Pro 10분 Cron은 외부 설정을 기다리고 있�
 - 개인정보 안내: `https://checkin.hometogether.kr/privacy/checkin`
 - 비상용 Vercel 주소: `https://hometogether-weekly-checkin.vercel.app`
 - Vercel 프로젝트: `hometogether-weekly-checkin`
-- 현재 Production Deployment: `dpl_SMM1m8HcgU5C6xEozJuY4PeBKtcf` (`Ready`, runtime
-  `icn1`). 위 두 alias가 이 배포를 가리키는지 `vercel inspect`로 재확인했습니다.
+- 최종 Production Deployment ID와 두 alias의 대상은 hardening PR merge 뒤
+  `vercel inspect`와 smoke test로 다시 기록합니다. 과거 deployment ID를 최종 배포
+  증거로 재사용하지 않습니다.
 - Supabase 프로젝트: `hometogether-admin` (`qgqnktipmmamzowbxcmg`, Seoul)
 - 도메인: `checkin.hometogether.kr`이 Vercel alias와 Cloudflare를 통해 연결됐고
   HTTPS 200 및 `PUBLIC_CHECKIN_BASE_URL` 일치를 확인함
-- 메시징: `MESSAGING_PROVIDER=mock`, `CHECKIN_SENDING_ENABLED=false`, SMS fallback
-  비활성. 실제 알림톡 자격증명·발신 프로필·승인 템플릿은 아직 미연결
+- 메시징: `MESSAGING_PROVIDER=disabled`, `CHECKIN_SENDING_ENABLED=false`,
+  `ENABLE_SMS_FALLBACK=false`. 실제 알림톡 자격증명·발신 프로필·승인 템플릿과
+  사업자 callback 등록은 아직 미연결
 - Production Cron: 일요일 최초 체크인, 월요일 리마인드, 매일 outbox 재처리.
   3개 route의 인증된 수동 실행과 원격 `cron_execution_logs=COMPLETED`를 확인했으며
   최신 대상·발송·실패는 각각 0건, 누적 완료 12건·실패 0건. 8월 9일 일요일
   정기 작업은 18:00 KST 예정이므로 10:42 KST 감사 시점에는 아직 미실행이 정상
 - 요금제: Vercel Hobby, Supabase Free. 따라서 outbox는 현재 일 1회이고 Supabase
   automatic backup/PITR는 비활성
-- 영구 운영 관리자: 0명. 기존 Production에서 verified Auth·active app member·legacy
-  관리자 세 조건을 모두 만족하는 동일 후보 1명은 확인했지만, `ADMIN_EMAILS` 또는
-  운영자의 명시적 승인이 없어 신규 `SUPER_ADMIN` 권한은 임의 부여하지 않음
+- 영구 운영 관리자: active `SUPER_ADMIN` 1명. 일회성 bootstrap은 완료됐고
+  `ADMIN_BOOTSTRAP_SECRET`은 제거한 상태를 유지해야 함
 - 실제 운영 데이터(테스트 제외): profiles 0, hosts 0, guests 0, homes 0,
   active matches 0, 현재 weekly 대상 0
 
@@ -88,24 +93,34 @@ SQL 순서:
 1. `supabase/migrations/202608020001_weekly_checkin_schema.sql`
 2. `supabase/migrations/202608020002_weekly_checkin_security_and_rpcs.sql`
 3. `supabase/migrations/202608070001_production_safety_and_operations.sql`
-4. `supabase/migrations/20260807072605_message_outbox_operational.sql`
-5. `supabase/migrations/20260807072611_operational_data_import.sql`
-6. `supabase/migrations/20260807072621_admin_operations.sql`
-7. `supabase/migrations/20260807072845_index_operational_foreign_keys.sql`
-8. `supabase/migrations/20260809015136_harden_touch_updated_at_search_path.sql`
-9. `supabase/migrations/20260809015353_harden_legacy_app_files_rls.sql`
-10. `supabase/migrations/20260809020242_harden_legacy_member_helpers.sql`
+4. `supabase/migrations/20260807052002_hometogether_auth_and_token_access.sql`
+5. `supabase/migrations/20260807052931_hometogether_auth_hardening.sql`
+6. `supabase/migrations/20260807071307_bootstrap_student_email_otp.sql`
+7. `supabase/migrations/20260807072605_message_outbox_operational.sql`
+8. `supabase/migrations/20260807072611_operational_data_import.sql`
+9. `supabase/migrations/20260807072621_admin_operations.sql`
+10. `supabase/migrations/20260807072845_index_operational_foreign_keys.sql`
+11. `supabase/migrations/20260809015136_harden_touch_updated_at_search_path.sql`
+12. `supabase/migrations/20260809015353_harden_legacy_app_files_rls.sql`
+13. `supabase/migrations/20260809020242_harden_legacy_member_helpers.sql`
+14. `supabase/migrations/20260809075546_participant_workflow_hardening.sql`
+15. `supabase/migrations/20260809085834_admin_preset_workflow.sql`
+16. `supabase/migrations/20260809090321_harden_checkin_submission_transaction.sql`
+17. `supabase/migrations/20260809090828_harden_admin_privacy_and_message_receipts.sql`
 
 `supabase/seed.sql`은 개발 프로젝트에서만 사용하며 Production에는 적용하지 않습니다.
-위 10개 HomeTogether migration은 원격 rollback dry-run 뒤 순서대로 적용했습니다.
-새 테이블/RPC의 RLS·grant와 외래키 index를 확인했으며 기존 `app_*` 데이터는
-삭제하지 않았습니다. 8월 9일 보안 migration은 `touch_updated_at`의 search path와
-미래 Data API 기본 권한을 fail closed로 고정하고, 잘못된 `PUBLIC ALL` 정책이 있던
-빈 `app_files`의 익명 CRUD 권한과 `app_members`·`app_records`의 익명 grant/권한
-확인 RPC를 회수하고, 로그인 구성원의 기존 조회·편집 권한은 유지했습니다. 원격
-history에는 이 저장소에 없는
-레거시 migration 3개(`20260807052002`, `20260807052931`, `20260807071307`)도 있어
-논리 백업 manifest가 이 복구 한계를 명시합니다.
+`supabase/config.toml`은 저장소에 있으며 로컬 전용 project ID, PostgreSQL major
+version, migration·seed replay 설정을 정의합니다. hosted project ref나 credential을
+담지 않습니다.
+
+현재 원격 migration history에는 1~15가 적용돼 있습니다. 한때 원격에만 있던
+`20260809075546`과 `20260809085834`의 source는 원격 migration history에서 읽기
+전용으로 복구했고, 정규화 hash가 원격 source와 일치함을 확인했습니다. 16~17은
+현재 hardening 작업에서 새로 만든 additive migration이며 Production에는 아직
+적용하지 않은 pending 상태입니다. 따라서 작업 트리 기준 local source는 17,
+원격 적용은 15, remote-only는 0, local-only는 2입니다. Production 적용 뒤에는
+반드시 Local/Remote 17/17과 hash, DB lint를 다시 확인합니다. 기존 적용 migration
+1~15는 수정·이름 변경·repair하지 않습니다.
 
 Supabase CLI를 사용하는 경우:
 
@@ -151,19 +166,18 @@ CHECKIN_SENDING_ENABLED=false
 
 전체 항목은 `.env.example`에 있습니다.
 
-현재 Vercel Production에는 Supabase 공개/서버 키, 앱 URL, token/rate-limit
-secret, Cron secret, 관리자 bootstrap secret, webhook signing secret이 등록되어
-있습니다. 값은 저장소와 이 문서에 기록하지 않습니다. `ALLOW_DEV_ADMIN=false`,
-`ENABLE_SMS_FALLBACK=false`, `MESSAGING_PROVIDER=mock`입니다. 실제 Kakao, SMS,
-CRM, 관리자 alert endpoint 자격증명은 등록하지 않았습니다.
+현재 Vercel Production에는 Supabase 공개/서버 키, 앱 URL, token/rate-limit secret,
+Cron secret과 관리자 allowlist가 등록돼 있습니다. 값은 저장소와 이 문서에 기록하지
+않습니다. `ADMIN_BOOTSTRAP_SECRET`은 일회성 bootstrap 완료 뒤 제거됐고,
+`ALLOW_DEV_ADMIN=false`, `CHECKIN_SENDING_ENABLED=false`,
+`ENABLE_SMS_FALLBACK=false`, `MESSAGING_PROVIDER=disabled` 상태를 유지합니다. 실제
+Kakao, SMS, CRM, 관리자 alert endpoint 자격증명은 연결하지 않았습니다.
 
 ## 운영 관리자 최초 생성
 
-관리자 인증·권한 검사는 Production E2E에서 임시 QA 관리자로 검증했고 해당
-계정은 정리했습니다. 기존 Production에는 verified Auth·active app member·legacy
-관리자 조건이 모두 일치하는 후보가 정확히 1명 있지만, 이 레거시 권한을 신규
-`SUPER_ADMIN` 승인으로 간주할지 확인되지 않았으므로 자동 승격하지 않았습니다.
-최초 운영 관리자는 다음 순서로 한 번만 생성합니다.
+최초 운영 관리자 bootstrap은 완료돼 active `SUPER_ADMIN` 1명이 존재하며, 임시
+`ADMIN_BOOTSTRAP_SECRET`은 제거됐습니다. 새 환경을 복구하거나 별도 project에서
+최초 운영 관리자를 다시 만들 때만 다음 절차를 사용합니다.
 
 1. Supabase Auth Dashboard에서 실제 운영자 계정을 초대하거나 생성하고 이메일
    인증을 완료합니다. 임의 비밀번호를 스크립트로 만들지 않습니다.
@@ -177,6 +191,12 @@ CRM, 관리자 alert endpoint 자격증명은 등록하지 않았습니다.
    `/admin/admins`, `/admin/data`를 확인합니다.
 6. DB의 일회성 bootstrap state가 재실행을 차단하는지 확인한 뒤 Vercel에서
    `ADMIN_BOOTSTRAP_SECRET`을 제거하고 다시 배포합니다.
+
+현재 관리자는 Supabase TOTP 등록 UI를 사용할 수 있지만, 실제 운영자가 QR을 직접
+스캔해 factor를 등록·검증한 사실은 아직 확인되지 않았습니다. 기존 관리자 잠금을
+막기 위해 `ADMIN_MFA_ENFORCEMENT_ENABLED`는 비활성으로 유지하고, 등록된 factor가
+있는 계정의 민감 작업은 AAL2를 요구합니다. 전역 강제는 모든 활성 관리자의 등록과
+break-glass 절차를 검증한 뒤 별도로 승인합니다.
 
 관리자 계정은 Supabase Auth와 `admin_memberships`로 관리됩니다. 일반
 authenticated 사용자는 서버 권한 검사와 RLS 때문에 관리자 데이터에 접근할 수
@@ -255,11 +275,11 @@ CHECKIN_SENDING_ENABLED=false
 `lib/messaging/kakao-alimtalk-provider.ts`의 payload, status 조회와 callback 서명
 mapping을 선택한 중계사 규격에 맞춰 검증해야 합니다. 도메인과 worker는
 `MessagingProvider.sendWeeklyCheckin/getStatus/verifyCallback` 계약에만
-의존합니다. 중계사의 idempotency key 지원 여부를 반드시 확인합니다. 현재는
-callback 검증 함수만 있고 실제 중계사 callback route와 delivery receipt DB 반영
-계약이 없으므로, secret을 채워도 Production 대량 발송 readiness는 false입니다.
-공식 중계사 규격으로 이 경로와 영속화를 구현·검증하기 전에는 이 차단을 해제하지
-않습니다. 자격증명이 준비된 경우의 관리자 단건 테스트만 별도 허용합니다.
+의존합니다. 중계사의 idempotency key 지원 여부를 반드시 확인합니다. Provider
+중립 callback route, HMAC/replay 검증, receipt 영속화와 상태 전이는 구현되어
+있지만 실제 BSP의 callback·조회 규격 fixture 검증과 callback URL 등록은 아직
+외부 운영 차단 항목입니다. 관리자 단건 테스트도 자격증명·승인 템플릿뿐 아니라
+서명 callback 설정까지 모두 준비되어야 허용됩니다.
 
 Production은 설정이 하나라도 없으면 Mock으로 내려가지 않고 발송·enqueue를
 fail closed합니다. 관리자 `/admin/system`에는 누락된 설정 이름만 표시하고
@@ -338,12 +358,11 @@ pnpm build
 pnpm audit --prod
 ```
 
-최종 검증 기준으로 lint, typecheck, 31개 파일/149개 test, integration 10개,
-Playwright local 5개, Production 6개, Next.js Production build, 전체 migration
-chain과 주요 DB behavior, `pnpm audit --prod`를 통과했습니다. RLS/privileged RPC는
-로컬 PGlite와 원격 Supabase 양쪽에서 확인했습니다. 실제 Kakao/SMS/CRM 전송은 각
-중계사 자격증명이 있어야 하며, 자격증명이 없으면 Production worker가 발송을
-차단합니다.
+현재 hardening 변경은 위 전체 명령과 빈 local Supabase의 전체 17개 migration·seed
+replay, `supabase db lint --local --fail-on error`가 모두 성공하고 GitHub Actions가
+통과한 뒤에만 완료로 판정합니다. 과거 test 개수나 Production E2E 결과를 현재
+작업 트리의 최종 증거로 재사용하지 않습니다. 실제 Kakao/SMS/CRM 전송은 각 중계사
+자격증명이 있어야 하며, 자격증명이 없으면 Production worker가 발송을 차단합니다.
 
 ## 배포 체크리스트
 
@@ -471,42 +490,32 @@ DB에 남아 있는지 다시 읽고, 별도 390px 참가자 context에서 완�
 
 ## 백업과 장애 복구
 
-현재 Supabase 프로젝트는 Free 요금제입니다. Dashboard 확인 시 자동 DB backup은
-비활성, 마지막 backup은 없음, 다운로드 가능한 자동 backup도 없음, Point-in-Time
-Recovery도 비활성입니다. Supabase Storage object는 DB backup 범위에 포함되지
-않으므로 사용 중이라면 별도로 내려받아야 합니다.
+현재 Supabase 프로젝트는 Free 요금제이며 managed backup/PITR는 `MISSING`입니다.
+Supabase Storage object는 DB backup 범위에 포함되지 않으므로 사용 중이라면 별도로
+보호해야 합니다.
 
-Migration 적용 전 기존 `app_records`, `app_members`, `app_files`, 공개 schema와
-weekly-checkin 관련 public table, Auth 사용자 metadata, OpenAPI와 생성 types를
-다음 권한 제한 폴더에 논리 백업하고 SHA-256 목록을 검증했습니다.
+기존 논리 백업은 Git 밖의 권한 제한 저장소에 보존하며, 실제 경로·row 내용·Auth
+metadata를 README나 GitHub에 기록하지 않습니다. 이미 검증된 기준 백업을 덮어쓰거나
+같은 경로로 다시 만들지 않습니다. 새 백업은 매번 새로운 절대 경로를 사용하고
+디렉터리 0700, 파일 0600, manifest/checksum 검증 결과만 별도의 보호된 change
+record에 남깁니다.
 
-[`../../work/production-backups/2026-08-07-pre-operational-readiness`](../../work/production-backups/2026-08-07-pre-operational-readiness)
-
-운영 보강 뒤 당시 스크립트가 알던 24개 application table, Auth 사용자 수,
-저장소 migration 목록을 다시 export해 28개 파일의 checksum을 검증했습니다.
-생성 직후 포함돼 있던 만료
-rate-limit bucket 60건은 백업 완료 뒤 exact purge RPC로 삭제했고, 활성 bucket이나
-운영 데이터는 삭제하지 않았습니다.
-
-[`../../work/production-backups/2026-08-07-post-operational-readiness`](../../work/production-backups/2026-08-07-post-operational-readiness)
-
-최종 재배포·Production E2E·fixture cleanup·Cron 검증 뒤 정리된 상태도 다시
-백업했습니다. 이 사본은 rate-limit bucket 0, Cron log 10, application table 24개와
-Auth 사용자 1명을 기록하며 28개 파일의 checksum 검증을 통과했습니다. 이후 감사에서
-레거시 5개 테이블이 inventory에서 누락됐음을 확인했으므로 이 기존 v1 사본은 완전한
-application-data restore가 아닙니다.
-
-[`../../work/production-backups/2026-08-07-final-production-readiness`](../../work/production-backups/2026-08-07-final-production-readiness)
-
-폴더는 mode 0700, 파일은 0600이며 `pnpm backup:verify -- --directory <path>`로 checksum을
-다시 확인할 수 있습니다. 현재 v2 `pnpm backup:logical -- --output <new-absolute-path>`는
-원격 public application table 29개를 모든 페이지로 읽어 manifest와 checksum을
-생성합니다. 다만 `migrations.sql`은 이 저장소 migration만 포함하고 위 레거시 원격 전용
-migration 3개는 포함하지 않음을 manifest에 표시합니다. 이 사본은 전체 PostgreSQL SQL dump,
-Storage object body, Auth secret을 포함하지 않으므로 native backup/PITR와 복구
-훈련을 대체하지 않습니다. 운영 시작 전 Supabase Pro의 Database > Backups에서
-자동 backup을 활성화하고, 필요한 RPO에 따라 PITR add-on과 지원 compute를 별도로
-활성화해야 합니다.
+현재 v3 `pnpm backup:logical -- --output <new-absolute-path>`는 원격 public application
+table 30개의 현재 inventory를 사용합니다. 아직 Production에 없는 table이 신규
+local-only migration으로 도입되는 경우에는 정확한 migration mapping이 있을 때만
+`tablesAbsentPendingMigration`로 기록합니다. `SUPABASE_ACCESS_TOKEN`이 process
+environment에 있으면 Management API의 remote migration version과 Git tracked local
+migration version을 비교해 `MATCHED` 또는 `MISMATCHED`를 기록하며, 없으면
+`NOT_CHECKED`로 남겨 완전성을 주장하지 않습니다. migration parity는 history 밖의
+legacy schema DDL까지 재현 가능하다는 뜻이 아닙니다. 이 사본은 전체 PostgreSQL SQL
+dump, Storage object body, Auth secret을 포함하지 않으므로 native backup/PITR를
+대체하지 않습니다. 검증과 rollback-only local restore drill은
+[`docs/BACKUP_RESTORE_RUNBOOK.md`](docs/BACKUP_RESTORE_RUNBOOK.md)를 따릅니다. 기존
+검증 백업으로 managed schema 26개 table의 49개 row와 Auth FK placeholder 1건을
+transaction 안에서 replay한 뒤 전부 rollback했고, 사후 local baseline 불변을
+확인했습니다. 원본 DDL이 없는 legacy table 3개는 제외했으므로 이는 **부분 복구 drill
+성공**이지 전체 application 복구 성공이 아닙니다. 운영 시작 전 managed backup/PITR와
+지원 compute는 별도 비용·운영 승인으로 결정합니다.
 
 장애 시에는 다음 순서로 복구합니다.
 
