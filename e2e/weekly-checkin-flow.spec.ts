@@ -98,9 +98,15 @@ test("submits a cleanliness issue and shows its YELLOW risk to an admin", async 
   await expect(page.getByRole("heading", { name: "응답이 안전하게 제출됐습니다." })).toBeVisible();
 
   await page.goto("/admin/checkins");
-  const responseCard = page.locator("article").filter({ hasText: "학생 3" }).filter({ hasText: "YELLOW" });
+  // The dashboard masks participant names for every admin, so cards are located
+  // by match id and the raw name must stay absent.
+  const responseCard = page
+    .locator("article")
+    .filter({ hasText: "demo-match-3" })
+    .filter({ hasText: "YELLOW" });
   await expect(responseCard).toBeVisible();
   await expect(responseCard).toContainText("청소·위생");
+  await expect(page.getByText("학생 3", { exact: true })).toHaveCount(0);
 });
 
 test("submits a care-pressure issue and shows its ORANGE risk to an admin", async ({ page }) => {
@@ -123,9 +129,13 @@ test("submits a care-pressure issue and shows its ORANGE risk to an admin", asyn
   await expect(page.getByRole("heading", { name: "응답이 안전하게 제출됐습니다." })).toBeVisible();
 
   await page.goto("/admin/checkins");
-  const responseCard = page.locator("article").filter({ hasText: "학생 4" }).filter({ hasText: "ORANGE" });
+  const responseCard = page
+    .locator("article")
+    .filter({ hasText: "demo-match-4" })
+    .filter({ hasText: "ORANGE" });
   await expect(responseCard).toBeVisible();
   await expect(responseCard).toContainText("생활지원·돌봄 요청 부담");
+  await expect(page.getByText("학생 4", { exact: true })).toHaveCount(0);
 });
 
 test("creates and prioritizes an unacknowledged RED safety case", async ({ page }) => {
@@ -143,8 +153,12 @@ test("creates and prioritizes an unacknowledged RED safety case", async ({ page 
 
   await page.goto("/admin/checkins");
   await expect(page.getByRole("link", { name: /확인하지 않은 긴급 응답이 있습니다/ })).toBeVisible();
-  const responseCard = page.locator("article").filter({ hasText: "학생 5" }).filter({ hasText: "RED" });
+  const responseCard = page
+    .locator("article")
+    .filter({ hasText: "demo-match-5" })
+    .filter({ hasText: "RED" });
   await expect(responseCard).toBeVisible();
   await expect(responseCard).toContainText("안전 확인 응답");
   await expect(responseCard).toContainText("미확인");
+  await expect(page.getByText("학생 5", { exact: true })).toHaveCount(0);
 });
