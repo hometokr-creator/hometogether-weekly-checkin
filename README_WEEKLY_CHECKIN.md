@@ -318,7 +318,11 @@ Cron으로 수동 실행했습니다. 원격 기록은 `WEEKLY_CHECKINS`, `CHECK
 원격 실행기록 검증입니다.
 
 Pro 전환 후 코드 수정 없이 다음 설정 전용 배포를 실행하면
-`vercel.pro.json`의 `*/10 * * * *` schedule이 적용됩니다.
+`vercel.pro.json`의 `*/10 * * * *` outbox 및 `* * * * *` 리드 SLA schedule이 적용됩니다.
+리드 SLA는 웹에서 생성된 문의의 첫 응답을 7분 경고, 10분 breach, 15분 escalation으로
+처리합니다. 일반 카카오 채널 1:1 메시지를 수신하는 webhook은 사용하지 않습니다.
+`ADMIN_ALERT_WEBHOOK_URL`이 설정된 경우 기존 서명된 운영 알림 outbox로 전송하며 실패는
+`integration_outbox`에 남습니다.
 
 ```bash
 pnpm deploy:production:pro
@@ -327,9 +331,10 @@ pnpm deploy:production:pro
 로컬 수동 실행:
 
 ```bash
-curl -H 'Authorization: Bearer local-development-cron-secret-only' http://localhost:3000/api/cron/weekly-checkins
-curl -H 'Authorization: Bearer local-development-cron-secret-only' http://localhost:3000/api/cron/checkin-reminders
-curl -H 'Authorization: Bearer local-development-cron-secret-only' http://localhost:3000/api/cron/checkin-outbox
+curl -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/weekly-checkins
+curl -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/checkin-reminders
+curl -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/checkin-outbox
+curl -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/lead-sla
 ```
 
 ## CRM과 관리자 긴급 알림
