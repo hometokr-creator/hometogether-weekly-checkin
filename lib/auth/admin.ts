@@ -22,6 +22,10 @@ export const ADMIN_PERMISSIONS = [
   "CONTACT_READ",
   "DATA_EXPORT",
   "CASE_WRITE",
+  "LEAD_READ",
+  "LEAD_WRITE",
+  "LEAD_IMPORT",
+  "LEAD_ANALYTICS",
 ] as const;
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
@@ -44,10 +48,7 @@ export type AdminMfaState = {
 };
 
 type AdminFailure =
-  | "UNAUTHENTICATED"
-  | "FORBIDDEN"
-  | "MFA_REQUIRED"
-  | "MISCONFIGURED";
+  "UNAUTHENTICATED" | "FORBIDDEN" | "MFA_REQUIRED" | "MISCONFIGURED";
 
 type AdminResolutionOptions = {
   includeMfa?: boolean;
@@ -104,7 +105,9 @@ export function hasAdminPermission(
   permissions: readonly AdminMembershipPermission[],
   permission: AdminRequiredPermission,
 ): boolean {
-  return permissions.includes("SUPER_ADMIN") || permissions.includes(permission);
+  return (
+    permissions.includes("SUPER_ADMIN") || permissions.includes(permission)
+  );
 }
 
 function isAdminMembershipPermission(
@@ -123,8 +126,7 @@ function normalizePermissions(value: unknown): AdminMembershipPermission[] {
 
   return value.filter(
     (permission): permission is AdminMembershipPermission =>
-      typeof permission === "string" &&
-      isAdminMembershipPermission(permission),
+      typeof permission === "string" && isAdminMembershipPermission(permission),
   );
 }
 
@@ -169,14 +171,15 @@ async function resolveAdmin(
         email: "development-admin@local.invalid",
         permissions: ["SUPER_ADMIN", ...ADMIN_PERMISSIONS],
         isDevelopmentBypass: true,
-        mfa: options.includeMfa || options.requireAal2
-          ? {
-              currentLevel: "aal2",
-              nextLevel: "aal2",
-              enrolled: true,
-              enforcementEnabled: false,
-            }
-          : undefined,
+        mfa:
+          options.includeMfa || options.requireAal2
+            ? {
+                currentLevel: "aal2",
+                nextLevel: "aal2",
+                enrolled: true,
+                enforcementEnabled: false,
+              }
+            : undefined,
       },
       failure: null,
     };
@@ -255,7 +258,8 @@ async function resolveAdmin(
   if (options.includeMfa || options.requireAal2) {
     const enrolled = Boolean(
       user.factors?.some(
-        (factor) => factor.factor_type === "totp" && factor.status === "verified",
+        (factor) =>
+          factor.factor_type === "totp" && factor.status === "verified",
       ),
     );
     const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -277,10 +281,7 @@ async function resolveAdmin(
     // Existing administrators remain able to enroll while the rollout flag is
     // disabled. Once a verified factor exists, sensitive operations always
     // require a fresh AAL2 session even before global enforcement is enabled.
-    if (
-      options.requireAal2 &&
-      needsAdminAal2(mfa)
-    ) {
+    if (options.requireAal2 && needsAdminAal2(mfa)) {
       return { context: null, failure: "MFA_REQUIRED" };
     }
   }
@@ -414,6 +415,7 @@ export async function requireAdminAal2Page(
 
   const searchParams = new URLSearchParams({ next: safeAdminPath(nextPath) });
   if (result.failure === "FORBIDDEN") searchParams.set("error", "forbidden");
-  if (result.failure === "MISCONFIGURED") searchParams.set("error", "configuration");
+  if (result.failure === "MISCONFIGURED")
+    searchParams.set("error", "configuration");
   redirect(`/admin/login?${searchParams.toString()}`);
 }

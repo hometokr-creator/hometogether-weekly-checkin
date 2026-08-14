@@ -27,12 +27,20 @@ const permissionSchema = z.enum([
   "CONTACT_READ",
   "DATA_EXPORT",
   "CASE_WRITE",
+  "LEAD_READ",
+  "LEAD_WRITE",
+  "LEAD_IMPORT",
+  "LEAD_ANALYTICS",
   "SUPER_ADMIN",
 ]);
 
 const addAdminSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  permissions: z.array(permissionSchema).min(1).max(6).transform((items) => [...new Set(items)]),
+  permissions: z
+    .array(permissionSchema)
+    .min(1)
+    .max(10)
+    .transform((items) => [...new Set(items)]),
 });
 
 function isAllowedOrigin(request: Request): boolean {
@@ -86,10 +94,20 @@ export async function GET() {
 export async function POST(request: Request) {
   const context = createRequestContext({ pragma: "no-cache" });
   if (!isAllowedOrigin(request)) {
-    return publicErrorResponse(context, "INVALID_ORIGIN", "허용되지 않은 요청입니다.", 403);
+    return publicErrorResponse(
+      context,
+      "INVALID_ORIGIN",
+      "허용되지 않은 요청입니다.",
+      403,
+    );
   }
   if (Number(request.headers.get("content-length") ?? 0) > 16_384) {
-    return publicErrorResponse(context, "PAYLOAD_TOO_LARGE", "요청 크기가 너무 큽니다.", 413);
+    return publicErrorResponse(
+      context,
+      "PAYLOAD_TOO_LARGE",
+      "요청 크기가 너무 큽니다.",
+      413,
+    );
   }
 
   try {
@@ -104,7 +122,12 @@ export async function POST(request: Request) {
     }
     const parsed = addAdminSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return publicErrorResponse(context, "INVALID_BODY", "관리자 입력값을 확인해 주세요.", 400);
+      return publicErrorResponse(
+        context,
+        "INVALID_BODY",
+        "관리자 입력값을 확인해 주세요.",
+        400,
+      );
     }
 
     const target = await findVerifiedAuthUserByEmail(parsed.data.email);

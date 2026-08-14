@@ -45,4 +45,20 @@ describe("administrator lifecycle CLI", () => {
       ]),
     ).toThrow("unsupported value");
   });
+
+  it("accepts scoped lead permissions for an administrator", () => {
+    expect(
+      parseAdminManageArguments([
+        "update",
+        "target@example.com",
+        "--actor",
+        "actor@example.com",
+        "--permissions",
+        "LEAD_READ,LEAD_WRITE,LEAD_ANALYTICS",
+      ]),
+    ).toMatchObject({
+      command: "update",
+      permissions: ["LEAD_READ", "LEAD_WRITE", "LEAD_ANALYTICS"],
+    });
+  });
 });

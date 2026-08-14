@@ -32,6 +32,10 @@ function normalizePermissions(value: unknown): AdminMembershipPermission[] {
       permission === "CONTACT_READ" ||
       permission === "DATA_EXPORT" ||
       permission === "CASE_WRITE" ||
+      permission === "LEAD_READ" ||
+      permission === "LEAD_WRITE" ||
+      permission === "LEAD_IMPORT" ||
+      permission === "LEAD_ANALYTICS" ||
       permission === "SUPER_ADMIN",
   );
 }
@@ -45,7 +49,10 @@ async function listAllAuthUsers() {
   }> = [];
 
   for (let page = 1; page <= 100; page += 1) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: 1000,
+    });
     if (error) throw error;
     users.push(...data.users);
     if (data.users.length < 1000) break;

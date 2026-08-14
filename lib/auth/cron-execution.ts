@@ -3,9 +3,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type CronJobName =
-  | "WEEKLY_CHECKINS"
-  | "CHECKIN_REMINDERS"
-  | "CHECKIN_OUTBOX";
+  "WEEKLY_CHECKINS" | "CHECKIN_REMINDERS" | "CHECKIN_OUTBOX" | "LEAD_SLA";
 export type CronExecutionStatus = "STARTED" | "COMPLETED" | "FAILED";
 
 export type CronExecutionRecord = {
@@ -37,9 +35,7 @@ export function safeCronErrorCode(error: unknown): string {
 
   // Codes are operational labels only: never persist a provider/DB message,
   // URL, token, phone number, answer, or stack trace.
-  return /^[A-Za-z0-9_.-]{1,80}$/.test(value)
-    ? value
-    : "UNCLASSIFIED_ERROR";
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(value) ? value : "UNCLASSIFIED_ERROR";
 }
 
 export async function recordCronExecution(

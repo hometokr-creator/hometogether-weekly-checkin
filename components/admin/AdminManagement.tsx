@@ -11,6 +11,10 @@ const permissions = [
   ["CONTACT_READ", "원문 연락처 접근"],
   ["DATA_EXPORT", "민감 CSV 내보내기"],
   ["CASE_WRITE", "지원 사건 변경"],
+  ["LEAD_READ", "리드 조회"],
+  ["LEAD_WRITE", "리드·방문 변경"],
+  ["LEAD_IMPORT", "과거 문의 가져오기"],
+  ["LEAD_ANALYTICS", "리드 분석 조회"],
   ["SUPER_ADMIN", "최고 관리자"],
 ] as const;
 
@@ -34,7 +38,10 @@ function PermissionCheckboxes({
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {permissions.map(([value, label]) => (
-        <label key={value} className="flex min-h-11 items-center gap-2 rounded-xl border border-[#d8e2dd] px-3 text-sm font-semibold">
+        <label
+          key={value}
+          className="flex min-h-11 items-center gap-2 rounded-xl border border-[#d8e2dd] px-3 text-sm font-semibold"
+        >
           <input
             type="checkbox"
             checked={selected.includes(value)}
@@ -79,12 +86,19 @@ export function AdminManagement({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, permissions: newPermissions }),
       });
-      if (!response.ok) throw new Error(await responseMessage(response, "관리자를 추가하지 못했습니다."));
+      if (!response.ok)
+        throw new Error(
+          await responseMessage(response, "관리자를 추가하지 못했습니다."),
+        );
       setEmail("");
       setMessage("관리자 권한을 추가했습니다.");
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "관리자를 추가하지 못했습니다.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "관리자를 추가하지 못했습니다.",
+      );
     } finally {
       setPendingId(undefined);
     }
@@ -97,16 +111,30 @@ export function AdminManagement({
     setMessage(undefined);
     setPendingId(member.userId);
     try {
-      const response = await fetch(`/api/admin/members/${encodeURIComponent(member.userId)}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
-      });
-      if (!response.ok) throw new Error(await responseMessage(response, "관리자 권한을 변경하지 못했습니다."));
-      setMessage(next.isActive ? "관리자 권한을 저장했습니다." : "관리자를 비활성화했습니다.");
+      const response = await fetch(
+        `/api/admin/members/${encodeURIComponent(member.userId)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(next),
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          await responseMessage(response, "관리자 권한을 변경하지 못했습니다."),
+        );
+      setMessage(
+        next.isActive
+          ? "관리자 권한을 저장했습니다."
+          : "관리자를 비활성화했습니다.",
+      );
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "관리자 권한을 변경하지 못했습니다.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "관리자 권한을 변경하지 못했습니다.",
+      );
     } finally {
       setPendingId(undefined);
     }
@@ -114,11 +142,17 @@ export function AdminManagement({
 
   return (
     <div className="grid gap-6">
-      <form onSubmit={addAdmin} className="grid gap-4 rounded-2xl border border-[#dce5e1] bg-white p-5 sm:p-6">
+      <form
+        onSubmit={addAdmin}
+        className="grid gap-4 rounded-2xl border border-[#dce5e1] bg-white p-5 sm:p-6"
+      >
         <div>
-          <h2 className="m-0 text-xl font-black">기존 인증 계정에 관리자 권한 추가</h2>
+          <h2 className="m-0 text-xl font-black">
+            기존 인증 계정에 관리자 권한 추가
+          </h2>
           <p className="mb-0 mt-2 text-sm leading-6 text-[#60706a]">
-            Supabase Auth에서 이메일 인증을 완료한 기존 계정만 추가합니다. 계정이나 임시 비밀번호를 자동 생성하지 않습니다.
+            Supabase Auth에서 이메일 인증을 완료한 기존 계정만 추가합니다.
+            계정이나 임시 비밀번호를 자동 생성하지 않습니다.
           </p>
         </div>
         <label className="text-sm font-bold">
@@ -131,7 +165,10 @@ export function AdminManagement({
             className="mt-2 min-h-12 w-full rounded-xl border border-[#b9c7c0] px-4 outline-none focus:border-[#39745d] focus:ring-4 focus:ring-[#39745d]/15"
           />
         </label>
-        <PermissionCheckboxes selected={newPermissions} onChange={setNewPermissions} />
+        <PermissionCheckboxes
+          selected={newPermissions}
+          onChange={setNewPermissions}
+        />
         <button
           type="submit"
           disabled={pendingId === "new" || newPermissions.length === 0}
@@ -142,7 +179,10 @@ export function AdminManagement({
       </form>
 
       {message ? (
-        <p role="status" className="m-0 rounded-xl border border-[#cddbd4] bg-white p-4 text-sm font-semibold">
+        <p
+          role="status"
+          className="m-0 rounded-xl border border-[#cddbd4] bg-white p-4 text-sm font-semibold"
+        >
           {message}
         </p>
       ) : null}
@@ -171,9 +211,15 @@ function MemberEditor({
   member: AdminMember;
   isCurrent: boolean;
   pending: boolean;
-  onSave: (next: { permissions: Permission[]; isActive: boolean; reason?: string }) => void;
+  onSave: (next: {
+    permissions: Permission[];
+    isActive: boolean;
+    reason?: string;
+  }) => void;
 }) {
-  const [selected, setSelected] = useState<Permission[]>(member.permissions as Permission[]);
+  const [selected, setSelected] = useState<Permission[]>(
+    member.permissions as Permission[],
+  );
   const [reason, setReason] = useState("");
 
   return (
@@ -181,17 +227,28 @@ function MemberEditor({
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <b>{member.email ?? "Auth 이메일 없음"}</b>
-          {isCurrent ? <span className="rounded-full bg-[#e7f3ed] px-2 py-1 text-xs font-bold text-[#0d523e]">현재 계정</span> : null}
-          <span className={`rounded-full px-2 py-1 text-xs font-bold ${member.isActive ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
+          {isCurrent ? (
+            <span className="rounded-full bg-[#e7f3ed] px-2 py-1 text-xs font-bold text-[#0d523e]">
+              현재 계정
+            </span>
+          ) : null}
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-bold ${member.isActive ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}
+          >
             {member.isActive ? "활성" : "비활성"}
           </span>
         </div>
-        <p className="mb-0 mt-2 font-mono text-xs text-[#718078]">{member.userId}</p>
+        <p className="mb-0 mt-2 font-mono text-xs text-[#718078]">
+          {member.userId}
+        </p>
       </div>
       <div className="grid gap-3">
         <PermissionCheckboxes selected={selected} onChange={setSelected} />
         {!member.isActive ? (
-          <p className="m-0 text-xs text-[#718078]">비활성 계정은 환경변수 허용 목록에 있어도 자동 재활성화되지 않습니다.</p>
+          <p className="m-0 text-xs text-[#718078]">
+            비활성 계정은 환경변수 허용 목록에 있어도 자동 재활성화되지
+            않습니다.
+          </p>
         ) : null}
       </div>
       <div className="grid min-w-48 gap-2">
@@ -207,7 +264,9 @@ function MemberEditor({
         <button
           type="button"
           disabled={pending || selected.length === 0}
-          onClick={() => onSave({ permissions: selected, isActive: member.isActive })}
+          onClick={() =>
+            onSave({ permissions: selected, isActive: member.isActive })
+          }
           className="min-h-11 rounded-xl border border-[#9bbcaf] bg-[#f4faf7] px-4 text-sm font-bold text-[#0d523e] disabled:opacity-50"
         >
           {pending ? "저장 중…" : "권한 저장"}

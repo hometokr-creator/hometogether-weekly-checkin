@@ -3,7 +3,13 @@ import { createClient, type User } from "@supabase/supabase-js";
 const permissions = [
   "CHECKIN_READ",
   "SAFETY_READ",
+  "CONTACT_READ",
+  "DATA_EXPORT",
   "CASE_WRITE",
+  "LEAD_READ",
+  "LEAD_WRITE",
+  "LEAD_IMPORT",
+  "LEAD_ANALYTICS",
   "SUPER_ADMIN",
 ] as const;
 
@@ -29,10 +35,10 @@ function usage(): never {
     [
       "Usage:",
       "  pnpm admin:manage -- list --actor actor@example.com",
-      "  pnpm admin:manage -- add target@example.com --actor actor@example.com [--permissions CHECKIN_READ,SAFETY_READ,CASE_WRITE]",
-      "  pnpm admin:manage -- update target@example.com --actor actor@example.com --permissions CHECKIN_READ,SAFETY_READ",
-      "  pnpm admin:manage -- deactivate target@example.com --actor actor@example.com --reason \"role ended\"",
-      "  pnpm admin:manage -- reactivate target@example.com --actor actor@example.com [--permissions CHECKIN_READ,SAFETY_READ]",
+      "  pnpm admin:manage -- add target@example.com --actor actor@example.com [--permissions CHECKIN_READ,LEAD_READ]",
+      "  pnpm admin:manage -- update target@example.com --actor actor@example.com --permissions CHECKIN_READ,LEAD_READ,LEAD_WRITE",
+      '  pnpm admin:manage -- deactivate target@example.com --actor actor@example.com --reason "role ended"',
+      "  pnpm admin:manage -- reactivate target@example.com --actor actor@example.com [--permissions CHECKIN_READ,LEAD_READ]",
     ].join("\n"),
   );
 }
@@ -46,10 +52,14 @@ function normalizeEmail(value: string | undefined): string | undefined {
 
 function parsePermissions(value: string | undefined): Permission[] | undefined {
   if (!value) return undefined;
-  const parsed = [...new Set(value.split(",").map((item) => item.trim().toUpperCase()))];
+  const parsed = [
+    ...new Set(value.split(",").map((item) => item.trim().toUpperCase())),
+  ];
   if (
     parsed.length === 0 ||
-    parsed.some((permission) => !(permissions as readonly string[]).includes(permission))
+    parsed.some(
+      (permission) => !(permissions as readonly string[]).includes(permission),
+    )
   ) {
     throw new Error("--permissions contains an unsupported value");
   }
@@ -58,7 +68,10 @@ function parsePermissions(value: string | undefined): Permission[] | undefined {
 
 export function parseAdminManageArguments(argv: string[]): ParsedArguments {
   const command = argv[0] as Command | undefined;
-  if (!command || !["list", "add", "update", "deactivate", "reactivate"].includes(command)) {
+  if (
+    !command ||
+    !["list", "add", "update", "deactivate", "reactivate"].includes(command)
+  ) {
     return usage();
   }
 
@@ -69,7 +82,8 @@ export function parseAdminManageArguments(argv: string[]): ParsedArguments {
   for (let index = flagStart; index < argv.length; index += 2) {
     const name = argv[index];
     const value = argv[index + 1];
-    if (!name?.startsWith("--") || !value || value.startsWith("--")) return usage();
+    if (!name?.startsWith("--") || !value || value.startsWith("--"))
+      return usage();
     if (flags.has(name)) throw new Error(`Duplicate option: ${name}`);
     flags.set(name, value);
   }
@@ -83,7 +97,8 @@ export function parseAdminManageArguments(argv: string[]): ParsedArguments {
   if (!actorEmail) return usage();
   const selectedPermissions = parsePermissions(flags.get("--permissions"));
   const reason = flags.get("--reason")?.trim();
-  if (reason && reason.length > 500) throw new Error("--reason must be 500 characters or fewer");
+  if (reason && reason.length > 500)
+    throw new Error("--reason must be 500 characters or fewer");
   if (command === "update" && !selectedPermissions) {
     throw new Error("update requires --permissions");
   }
@@ -117,7 +132,10 @@ async function listAllAuthUsers(
 ): Promise<User[]> {
   const users: User[] = [];
   for (let page = 1; page <= 100; page += 1) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: 1000,
+    });
     if (error) throw error;
     users.push(...data.users);
     if (data.users.length < 1000) return users;
@@ -126,17 +144,22 @@ async function listAllAuthUsers(
 }
 
 function findVerifiedUser(users: User[], email: string): User {
-  const user = users.find((candidate) => candidate.email?.trim().toLowerCase() === email);
+  const user = users.find(
+    (candidate) => candidate.email?.trim().toLowerCase() === email,
+  );
   if (!user) throw new Error("Existing Supabase Auth user was not found");
-  if (!user.email_confirmed_at) throw new Error("Auth user email is not verified");
+  if (!user.email_confirmed_at)
+    throw new Error("Auth user email is not verified");
   return user;
 }
 
 async function main() {
   const args = parseAdminManageArguments(process.argv.slice(2));
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secret = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !secret) throw new Error("Supabase server configuration is missing");
+  const secret =
+    process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !secret)
+    throw new Error("Supabase server configuration is missing");
 
   const supabase = createServiceClient(url, secret);
   const authUsers = await listAllAuthUsers(supabase);
@@ -146,7 +169,8 @@ async function main() {
     { p_user_id: actor.id, p_required_permission: "SUPER_ADMIN" },
   );
   if (actorError) throw actorError;
-  if (actorAllowed !== true) throw new Error("Actor is not an active SUPER_ADMIN");
+  if (actorAllowed !== true)
+    throw new Error("Actor is not an active SUPER_ADMIN");
 
   const { data: memberships, error: membershipError } = await supabase
     .from("admin_memberships")
@@ -154,7 +178,10 @@ async function main() {
     .order("created_at", { ascending: true });
   if (membershipError) throw membershipError;
   const membershipByUserId = new Map(
-    (memberships ?? []).map((membership) => [String(membership.user_id), membership]),
+    (memberships ?? []).map((membership) => [
+      String(membership.user_id),
+      membership,
+    ]),
   );
 
   if (args.command === "list") {
@@ -171,8 +198,7 @@ async function main() {
 
   const target = findVerifiedUser(authUsers, args.targetEmail!);
   const existing = membershipByUserId.get(target.id) as
-    | { permissions?: unknown; is_active?: boolean }
-    | undefined;
+    { permissions?: unknown; is_active?: boolean } | undefined;
   if (args.command === "add" && existing) {
     throw new Error("Target already has an administrator membership");
   }
@@ -190,7 +216,8 @@ async function main() {
   const nextPermissions =
     args.permissions ??
     (args.command === "add" ? defaultAdminPermissions : existingPermissions);
-  if (!nextPermissions.length) throw new Error("At least one permission is required");
+  if (!nextPermissions.length)
+    throw new Error("At least one permission is required");
   const nextActive = args.command !== "deactivate";
 
   const { error } = await supabase.rpc("admin_set_membership", {
@@ -201,8 +228,13 @@ async function main() {
     p_reason: args.reason ?? null,
   });
   if (error) {
-    if (error.code === "23514" || error.message.includes("last_super_admin_protected")) {
-      throw new Error("The last active SUPER_ADMIN cannot be deactivated or demoted");
+    if (
+      error.code === "23514" ||
+      error.message.includes("last_super_admin_protected")
+    ) {
+      throw new Error(
+        "The last active SUPER_ADMIN cannot be deactivated or demoted",
+      );
     }
     throw error;
   }
@@ -214,7 +246,9 @@ async function main() {
 
 if (process.env.NODE_ENV !== "test") {
   main().catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : "Administrator command failed");
+    console.error(
+      error instanceof Error ? error.message : "Administrator command failed",
+    );
     process.exitCode = 1;
   });
 }
